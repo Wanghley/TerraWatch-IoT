@@ -1,0 +1,63 @@
+{
+  "folders": [
+    {
+      "name": "📋 Project Root",
+      "path": "."
+    },
+    {
+      "name": "🔧 Sensing L1-L2 (ESP32)",
+      "path": "./firmware-sensing-l1-l2"
+    },
+    {
+      "name": "📷 Sensing L3 (Vision)",
+      "path": "./firmware-sensing-l3"
+    },
+    {
+      "name": "⚡ Deterrence System",
+      "path": "./firmware-deterrence"
+    },
+    {
+      "name": "🎨 Hardware Design",
+      "path": "./hardware-design"
+    }
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/.git": true,
+      "**/.DS_Store": true,
+      "**/__pycache__": true,
+      "**/.pio": true,
+      "**/node_modules": true
+    },
+    "explorer.fileNesting.enabled": true,
+    "explorer.fileNesting.patterns": {
+      "platformio.ini": ".gitignore, .clang-format, .clang-tidy",
+      "requirements.txt": "setup.py, setup.cfg, pyproject.toml",
+      "README.md": "LICENSE, CHANGELOG.md, CONTRIBUTING.md"
+    },
+    "material-icon-theme.folders.associations": {
+      "firmware-sensing-l1-l2": "controller",
+      "firmware-sensing-l3": "camera",
+      "firmware-deterrence": "plugin",
+      "hardware-design": "blueprint",
+      "cad-models": "model",
+      "pcb": "circuit",
+      "fabrication": "tools"
+    },
+    "material-icon-theme.files.associations": {
+      "platformio.ini": "platformio",
+      "*.step": "3d",
+      "*.stl": "3d",
+      "*.dxf": "plan"
+    }
+  },
+  "extensions": {
+    "recommendations": [
+      "platformio.platformio-ide",
+      "ms-python.python",
+      "ms-vscode.cpptools",
+      "pkief.material-icon-theme",
+      "yzhang.markdown-all-in-one"
+    ]
+  }
+}
