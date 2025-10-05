@@ -20,7 +20,7 @@ This project is organized into four main components:
 **Deterrence System - ESP32**
 - Floodlight & strobe control
 - Predator call audio playback
-- MQTT-triggered activation
+- Wifi-triggered activation
 
 ### 🎨 hardware-design/
 **CAD, PCB & Mechanical Design**
@@ -56,7 +56,7 @@ For the best experience, install:
 ```
 [PIR Sensor] ──┐
 [Thermal Array]─┤
-[Microphone] ───┼──> [ESP32 L1/L2] ──MQTT──> [Orange Pi L3] ──MQTT──> [ESP32 Deterrence]
+[Microphone] ───┼──> [ESP32 L1/L2] ──LoRa/Wire──> [Orange Pi L3] ──WiFi──> [ESP32 Deterrence]
 [mmWave Radar]──┘      (ML Model)              (CNN Model)              (Actuators)
 ```
 
