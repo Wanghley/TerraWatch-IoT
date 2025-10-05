@@ -36,14 +36,14 @@
       "README.md": "LICENSE, CHANGELOG.md, CONTRIBUTING.md"
     },
     "material-icon-theme.folders.associations": {
-      "firmware-sensing-l1-l2": "controller",
-      "firmware-sensing-l3": "camera",
-      "firmware-deterrence": "plugin",
-      "hardware-design": "blueprint",
-      "cad-models": "model",
-      "pcb": "circuit",
-      "fabrication": "tools"
-    },
+    "firmware-sensing-l1-l2": "controller",
+    "firmware-sensing-l3": "controller", 
+    "firmware-deterrence": "plugin",
+    "hardware-design": "tools",  
+    "cad-models": "database",
+    "pcb": "circuit",
+    "fabrication": "tools"
+  },
     "material-icon-theme.files.associations": {
       "platformio.ini": "platformio",
       "*.step": "3d",
