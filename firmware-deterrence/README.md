@@ -11,7 +11,7 @@ Actuator control system for wildlife deterrence using ESP32.
 - Relay modules
 
 ## Features
-- MQTT-triggered activation
+- WiFi-triggered activation
 - Multiple deterrence strategies
 - Predator call audio playback
 - Safety interlocks

@@ -13,7 +13,7 @@ Motion detection and ML-based classification using ESP32 microcontroller.
 ## Features
 - Level 1: Motion detection trigger
 - Level 2: Multi-sensor fusion and ML classification
-- MQTT communication to Level 3
+- LoRa/Wire communication to Level 3
 
 ## Getting Started
 ```bash

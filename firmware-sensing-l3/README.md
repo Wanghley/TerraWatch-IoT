@@ -6,7 +6,7 @@ CNN-based image analysis for animal classification using Orange Pi 4A.
 ## Hardware
 - Orange Pi 4A (8GB RAM)
 - High-resolution Camera Module
-- MQTT Client for communication
+- WiFi Client for communication
 
 ## Features
 - Camera capture on trigger from L1/L2
