@@ -15,7 +15,7 @@
     <img src="image.gif" alt="Logo" width="280">
   </a>
 
-  <h3 align="center">TerraWatch-IoT</h3>
+  <h3 align="center">TerraWatch-IoT (sic Agronauts)</h3>
 
   <p align="center">
     IoT-based intelligent pest detection and deterrence system for agricultural protection
