@@ -1,0 +1,13 @@
+# MacOs
+.DS_Store
+# Thumbnails
+._*
+# Compiled Object files
+*.o
+*.ko
+*.obj
+*.elf
+*.elf.*d
+# Precompiled Headers
+*.gch
+*.pch
