@@ -23,6 +23,10 @@
     {
       "name": "DFRobot_C4001-test",
       "path": "firmware-sensing-l1-l2/test/DFRobot_C4001-test"
+    },
+    {
+      "name": "thermal-test",
+      "path": "firmware-sensing-l1-l2/test/thermal-test"
     }
   ],
   "settings": {
