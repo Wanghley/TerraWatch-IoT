@@ -28,7 +28,7 @@ void setup() {
   radar.setFrettingDetection(eON);      // detect weak movements
   radar.setDetectThres(5, 2400, 20);    // min threshold, max range, gain
 
-
+ 
   // Print current configuration
   sSensorStatus_t data = radar.getStatus();
   Serial.print("Work status: "); Serial.println(data.workStatus);
