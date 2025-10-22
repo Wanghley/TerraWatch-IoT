@@ -81,9 +81,9 @@ void loop() {
   // Optionally multiply so plot is more visible: e.g. *1.0 for 0..1, *100 for 0..100
   Serial.print(0); // freeze lower limit
   Serial.print(" ");
-  Serial.print(30); // freeze upper limit
+  Serial.print(20); // freeze upper limit
   Serial.print(" ");
   Serial.println(rms_norm * 100.0);
 
-  delay(50); // faster refresh for plotter responsiveness
+  delay(30); // faster refresh for plotter responsiveness
 }
