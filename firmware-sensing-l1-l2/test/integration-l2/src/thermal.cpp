@@ -1,55 +1,46 @@
-#include <Arduino.h>
-#include <Wire.h>
-#include <Adafruit_AMG88xx.h>
+#include "thermal.h"
 
-// Left and right thermal sensors
-Adafruit_AMG88xx amgLeft = Adafruit_AMG88xx();
-Adafruit_AMG88xx amgRight = Adafruit_AMG88xx();
+// Sensor object
+Adafruit_AMG88xx amg;
 
-#define LEFT_SENSOR_ADDR 0x68
-#define RIGHT_SENSOR_ADDR 0x69
+bool setupThermalSensor() {
+    Serial.println("Initializing AMG88xx thermal sensor...");
 
-// I2C pins
-#define I2C_SDA_PIN 8
-#define I2C_SCL_PIN 9
+    // Initialize I2C
+    Wire.begin(I2C_SDA, I2C_SCL);
+    delay(100);
 
-float leftPixels[AMG88xx_PIXEL_ARRAY_SIZE];
-float rightPixels[AMG88xx_PIXEL_ARRAY_SIZE];
-
-void setupThermalSensors()
-{
-    Serial.println("Initializing thermal sensors...");
-    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
-
-    if (!amgLeft.begin(LEFT_SENSOR_ADDR))
-    {
-        Serial.println("Could not find left AMG88xx sensor!");
-        while (1)
-            ;
+    // Initialize sensor
+    if (!amg.begin()) {
+        Serial.println("Could not find a valid AMG88xx sensor, check wiring!");
+        return false;
     }
-    Serial.println("Left AMG88xx sensor initialized.");
 
-    if (!amgRight.begin(RIGHT_SENSOR_ADDR))
-    {
-        Serial.println("Could not find right AMG88xx sensor!");
-        while (1)
-            ;
+    Serial.println("AMG88xx sensor connected successfully!");
+    return true;
+}
+
+ThermalFrame readThermalFrame() {
+    ThermalFrame frame;
+    frame.width = 8;
+    frame.height = 8;
+
+    // Read pixels from sensor
+    amg.readPixels(frame.pixels);
+
+    return frame;
+}
+
+void printThermalFrame(const ThermalFrame& frame) {
+    Serial.println("[");
+    for (int y = 0; y < frame.height; y++) {
+        for (int x = 0; x < frame.width; x++) {
+            int idx = y * frame.width + x;
+            Serial.print(frame.pixels[idx], 2);  // two decimals
+            if (x < frame.width - 1) Serial.print(", ");
+        }
+        Serial.println();
     }
-    Serial.println("Right AMG88xx sensor initialized.");
-}
-
-void readThermalSensors()
-{
-    amgLeft.readPixels(leftPixels);
-    amgRight.readPixels(rightPixels);
-}
-
-float *getLeftThermalData()
-{
-    return leftPixels;
-}
-
-float *getRightThermalData()
-{
-    return rightPixels;
+    Serial.println("]");
+    Serial.println();
 }
