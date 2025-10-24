@@ -1,9 +1,9 @@
 #include <Arduino.h>
 #include "esp_sleep.h"
 
-#define LPIR 26  // A0
-#define CPIR 25  // A1
-#define RPIR 34  // A2 (input-only)
+#define LPIR 12  // A0
+#define CPIR 11  // A1
+#define RPIR 10  // A2 (input-only)
 
 RTC_DATA_ATTR int wakeCount = 0;
 
