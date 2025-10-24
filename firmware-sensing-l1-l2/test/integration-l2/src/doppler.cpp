@@ -1,5 +1,7 @@
 #include "doppler.h"
 
+RTC_DATA_ATTR bool dopplerConfigured = false; // persist across deep sleep
+
 // UART object (UART2)
 HardwareSerial DopplerSerial(2);
 
@@ -7,39 +9,29 @@ HardwareSerial DopplerSerial(2);
 DFRobot_C4001_UART Doppler(&DopplerSerial, 9600, DOPPLER_RX_PIN, DOPPLER_TX_PIN);
 
 void setupDoppler(boolean frettingOn, int min, int max, int thres) {
-    Serial.println("Initializing Doppler sensor...");
-
-    // Start UART
     DopplerSerial.begin(9600, SERIAL_8N1, DOPPLER_RX_PIN, DOPPLER_TX_PIN);
-    delay(100);
+    delay(50); // minimal settle time
 
-    // Initialize sensor with watchdog-safe retry
-    unsigned long start = millis();
-    while (!Doppler.begin()) {
-        Serial.println("Radar not found! Check wiring & power.");
-        if (millis() - start > 10000) {  // 10-second timeout
-            Serial.println("Initialization timeout. Continuing anyway.");
-            break;
+    if (!dopplerConfigured) {
+        Serial.println("Initializing Doppler sensor for the first time...");
+
+        // Try to begin with short retry loop
+        unsigned long start = millis();
+        while (!Doppler.begin()) {
+            if (millis() - start > 3000) { // 3s timeout
+                Serial.println("Initialization timeout. Continuing anyway.");
+                break;
+            }
+            delay(20); // short retry
         }
-        delay(500);
+
+        Doppler.setSensorMode(eSpeedMode);
+        Doppler.setFrettingDetection(frettingOn ? eON : eOFF);
+        Doppler.setDetectThres(min, max, thres);
+
+        dopplerConfigured = true; // mark as configured
+        Serial.println("Doppler initialized and configured.");
     }
-    Serial.println("Radar Initialized Successfully!");
-
-    // MAX SENSITIVITY CONFIGURATION
-    Doppler.setSensorMode(eSpeedMode);
-    Doppler.setFrettingDetection(frettingOn ? eON : eOFF);
-    Doppler.setDetectThres(min, max, thres);
-
-    // Print current configuration
-    sSensorStatus_t data = Doppler.getStatus();
-    Serial.print("Work status: "); Serial.println(data.workStatus);
-    Serial.print("Work mode  : "); Serial.println(data.workMode);
-    Serial.print("Init status: "); Serial.println(data.initStatus);
-    Serial.print("Min range  : "); Serial.println(Doppler.getTMinRange());
-    Serial.print("Max range  : "); Serial.println(Doppler.getTMaxRange());
-    Serial.print("Threshold  : "); Serial.println(Doppler.getThresRange());
-    Serial.print("Fretting   : "); Serial.println(Doppler.getFrettingDetection());
-    Serial.println("--------------------------------------");
 }
 
 DopplerData readDoppler() {
