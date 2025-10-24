@@ -1,37 +1,83 @@
 #include <Arduino.h>
+#include "wake_manager.h"
 #include "doppler.h"
 #include "thermal.h"
+#include "mic.h"
 
-void setup() {
+// PIR pins: LPIR, CPIR, RPIR
+SleepManager sleepManager(12, 11, 10);
+
+void setup()
+{
     Serial.begin(115200);
-    while (!Serial);
+    while (!Serial)
+        ;
 
-    Serial.println("=== Initializing Sensors ===");
+    // Initialize wake manager
+    sleepManager.begin();
 
-    // --- Initialize Doppler ---
+    // Initialize microphone
+    mic_begin();
+    Serial.printf("Wake count: %d\n", sleepManager.getWakeCount());
+
+    // Initialize sensors
     setupDoppler(true, 5, 2400, 20);
-
-    // --- Initialize Thermal ---
-    if (!setupThermalSensor()) {
-        Serial.println("Thermal sensor failed to initialize. Halting.");
-        while (1);
+    if (!setupThermalSensor())
+    {
+        Serial.println("Thermal sensor failed. Halting.");
+        while (1)
+            ;
     }
 
-    Serial.println("=== Sensors Initialized Successfully ===");
+    unsigned long startTime = millis();
+    const unsigned long durationMs = 30UL * 1000UL; // 30 seconds
+    const unsigned long sampleIntervalMs = 10;      // ~100 Hz → 10 ms per sample
+    int sampleCount = 0;
+
+    while (millis() - startTime < durationMs)
+    {
+        DopplerData doppler = readDoppler();
+        ThermalFrame thermal = readThermalFrame();
+        double micRMS = mic_readRMS();
+        int lastPeak = mic_getPeak();
+
+        // Output as single-line JSON-like format for Octave
+        Serial.print("{");
+        Serial.printf("\"sample\":%d,", ++sampleCount);
+
+        // Doppler
+        Serial.printf("\"doppler\":{\"speed\":%.2f,\"range\":%.2f,\"energy\":%.2f},",
+                      doppler.speed, doppler.range, doppler.energy);
+
+        // Thermal
+        Serial.print("\"thermal\":[");
+        for (int j = 0; j < AMG88xx_PIXEL_ARRAY_SIZE; j++)
+        {
+            Serial.print(thermal.pixels[j], 2);
+            if (j < AMG88xx_PIXEL_ARRAY_SIZE - 1)
+                Serial.print(",");
+        }
+        Serial.print("],"); // close thermal array
+
+        // Microphone
+        Serial.printf("\"mic\":{\"rms\":%.4f,\"peak\":%d}", micRMS, lastPeak);
+
+        Serial.println("}"); // close sample object
+
+        // Wait for next sample
+        unsigned long elapsed = millis() - startTime;
+        unsigned long nextSampleTime = sampleCount * sampleIntervalMs;
+        if (nextSampleTime > elapsed)
+        {
+            delay(nextSampleTime - elapsed);
+        }
+    }
+
+    // Go back to deep sleep
+    sleepManager.sleepNow();
 }
 
-void loop() {
-    // --- Read Doppler ---
-    DopplerData doppler = readDoppler();
-    Serial.println("=== Doppler Data ===");
-    Serial.print("Speed: "); Serial.print(doppler.speed); Serial.println(" m/s");
-    Serial.print("Range: "); Serial.print(doppler.range); Serial.println(" m");
-    Serial.print("Energy: "); Serial.println(doppler.energy);
-
-    // --- Read Thermal ---
-    ThermalFrame thermal = readThermalFrame();
-    Serial.println("=== Thermal Data ===");
-    printThermalFrame(thermal);
-
-    delay(100);  // ~10 Hz loop
+void loop()
+{
+    // not used
 }
