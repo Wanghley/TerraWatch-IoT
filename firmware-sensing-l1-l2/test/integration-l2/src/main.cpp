@@ -30,8 +30,8 @@ void setup()
     }
 
     unsigned long startTime = millis();
-    const unsigned long durationMs = 30UL * 1000UL; // 30 seconds
-    const unsigned long sampleIntervalMs = 10;      // ~100 Hz → 10 ms per sample
+    const unsigned long durationMs = 3UL * 1000UL; // 3 seconds
+    const unsigned long sampleIntervalMs = 100;      // ~100 Hz → 10 ms per sample
     int sampleCount = 0;
 
     while (millis() - startTime < durationMs)
