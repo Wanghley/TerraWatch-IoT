@@ -1,0 +1,17 @@
+YOLOv5 Inference Results - 2025-10-28 19:18:47
+Input Image: dog.jpg
+Command: ./yolov5 ../model/v2/yolov5.nb ../input_data/dog.jpg
+Working Directory: /home/orangepi/TerraWatch-IoT/board-demo/yolov5/build
+==================================================
+
+STDOUT:
+./yolov5 nbg input
+VIPLite driver software version 1.13.0.0-AW-2023-10-19
+yolov5_preprocess.cpp run. 
+yolov5_postprocess.cpp run. 
+
+STDERR:
+detection num: 3
+16:  91%, [ 135,  218,  305,  553], dog
+ 7:  69%, [ 473,   75,  689,  174], truck
+ 1:  49%, [ 151,  121,  561,  431], bicycle

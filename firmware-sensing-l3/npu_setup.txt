@@ -1,0 +1,38 @@
+Execute all of these commands if we have to reset OS..
+
+git clone https://github.com/Wanghley/TerraWatch-IoT.git
+   82  ls
+   83  cd TerraWatch-IoT
+   84  ls
+   85  sudo apt upgrade
+   86  sudo apt update
+   87  pip
+   88  sudo apt install pip
+   92  pip install venv
+   94  pip install gdown
+  125  export PATH=$PATH:~/.local/bin
+  126  ls
+  127  gdown 1i0VTlf4dG8mgFpKm-bkRprPAz2MOaLaZ\n
+  128  ls
+  129  rm filename.*
+  130  ls
+  131  rm cookie
+  132  source \home\orangepi\.cursor-server\bin\de327274300c6f38ec9f4240d11e82c3b0660b20/out/vs/workbench/contrib/terminal/common/scripts/shellIntegration-rc.zsh
+  133  ls
+  134* source \home\orangepi\.cursor-server\bin\de327274300c6f38ec9f4240d11e82c3b0660b20/out/vs/workbench/contrib/terminal/common/scripts/shellIntegration-rc.zsh
+  135  tar -xzf board-demo.tar.gz\n
+  136  ls
+  137  cd board-demo
+  138  ls
+  139  sudo cp ./common/lib_linux_aarch64/T527/*.so /usr/lib
+  140  ls
+  141  cd yolov5
+  143  mkdir build; cd build
+  145  ls
+  146  cmake ..
+  147  make
+  148* source \home\orangepi\.cursor-server\bin\de327274300c6f38ec9f4240d11e82c3b0660b20/out/vs/workbench/contrib/terminal/common/scripts/shellIntegration-rc.zsh
+  149  ./mbv2-ssd-demo-b../model/mbv2_ssd_x527.nb-i../000012.jpg
+  150  ls
+  151  ls -a
+  152  ./yolov5 ../model/v2/yolov5.nb ../input_data/dog.jpg
