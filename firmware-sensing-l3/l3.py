@@ -11,6 +11,40 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
+def capture_camera_frame():
+    """
+    Capture a frame from the camera using ffmpeg
+    
+    Returns:
+        str: Path to the captured image file, or None if failed
+    """
+    output_path = Path("/home/orangepi/TerraWatch-IoT/firmware-sensing-l3/output.jpg")
+    
+    print("Capturing frame from camera...")
+    print("Command: ffmpeg -f video4linux2 -i /dev/video1 -vframes 1 output.jpg -y")
+    
+    try:
+        result = subprocess.run([
+            "ffmpeg", "-f", "video4linux2", "-i", "/dev/video1", 
+            "-vframes", "1", str(output_path), "-y"
+        ], capture_output=True, text=True, check=True)
+        
+        if output_path.exists():
+            print(f"Camera frame captured successfully: {output_path}")
+            return str(output_path)
+        else:
+            print("Error: Camera frame capture failed - output file not created")
+            return None
+            
+    except subprocess.CalledProcessError as e:
+        print(f"Error capturing camera frame: {e}")
+        print(f"Return code: {e.returncode}")
+        print(f"Error output: {e.stderr}")
+        return None
+    except Exception as e:
+        print(f"Unexpected error capturing camera frame: {e}")
+        return None
+
 def run_yolov5_inference(input_image):
     """
     Run YOLOv5 inference on the specified input image
@@ -28,11 +62,16 @@ def run_yolov5_inference(input_image):
     # Generate timestamp for file naming
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
-    # Check if input image exists
+    # Check if input image exists (try data folder first, then main directory)
     input_image_path = data_folder / input_image
     if not input_image_path.exists():
-        print(f"Error: Input image '{input_image}' not found in {data_folder}")
-        return False
+        # Try main directory (for camera-captured images)
+        main_dir_path = Path("/home/orangepi/TerraWatch-IoT/firmware-sensing-l3") / input_image
+        if main_dir_path.exists():
+            input_image_path = main_dir_path
+        else:
+            print(f"Error: Input image '{input_image}' not found in {data_folder} or main directory")
+            return False
     
     # Check if YOLOv5 executable exists
     yolov5_executable = yolov5_build_dir / "yolov5"
@@ -46,6 +85,22 @@ def run_yolov5_inference(input_image):
         print(f"Error: Model file not found at {model_file_path}")
         return False
     
+    # Ensure the image is available in yolov5's expected ../input_data directory
+    input_data_dir = (yolov5_build_dir / ".." / "input_data").resolve()
+    try:
+        input_data_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        print(f"Error ensuring input_data directory exists at {input_data_dir}: {e}")
+        return False
+
+    # Copy source image into input_data with same filename so relative path works
+    input_data_image_path = input_data_dir / input_image
+    try:
+        shutil.copy2(input_image_path, input_data_image_path)
+    except Exception as e:
+        print(f"Error copying image to input_data: {e}")
+        return False
+
     # Prepare the command
     input_data_path = f"../input_data/{input_image}"
     command = ["./yolov5", model_path, input_data_path]
@@ -137,9 +192,13 @@ def run_yolov5_inference(input_image):
 def main():
     """Main function to handle command line arguments"""
     
-    if len(sys.argv) != 2:
-        print("Usage: python3 l3.py <INPUT_IMAGE>")
-        print("Example: python3 l3.py dog.jpg")
+    if len(sys.argv) < 2:
+        print("Usage:")
+        print("  python3 l3.py <INPUT_IMAGE>                    # Run inference on image from data folder")
+        print("  python3 l3.py --camera-input                   # Capture frame from camera and run inference")
+        print("\nExamples:")
+        print("  python3 l3.py dog.jpg")
+        print("  python3 l3.py --camera-input")
         print("\nAvailable images in data folder:")
         
         # List available images
@@ -153,10 +212,29 @@ def main():
         
         sys.exit(1)
     
-    input_image = sys.argv[1]
-    
-    # Run the inference
-    success = run_yolov5_inference(input_image)
+    # Check if camera input flag is used
+    if sys.argv[1] == "--camera-input":
+        print("Camera input mode selected")
+        
+        # Capture frame from camera
+        camera_image_path = capture_camera_frame()
+        if camera_image_path is None:
+            print("Failed to capture camera frame. Exiting.")
+            sys.exit(1)
+        
+        # Use the captured image for inference
+        input_image = Path(camera_image_path).name
+        print(f"Running inference on captured camera frame: {input_image}")
+        
+        # Run the inference
+        success = run_yolov5_inference(input_image)
+        
+    else:
+        # Regular image file input
+        input_image = sys.argv[1]
+        
+        # Run the inference
+        success = run_yolov5_inference(input_image)
     
     if success:
         print("\nInference completed successfully!")
