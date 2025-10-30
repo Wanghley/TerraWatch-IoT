@@ -20,3 +20,6 @@
 .Trashes
 .AppleDouble
 .LSOverride
+
+# Results folder
+results/
