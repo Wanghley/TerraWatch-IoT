@@ -1,5 +1,7 @@
 #pragma once
 #include <cstdio>
+#include "doppler.h"  // your DopplerData struct
+#include "thermal.h"  // your ThermalFrame struct
 
 // --- Configuration ---
 #ifndef AMG88xx_PIXEL_ARRAY_SIZE
@@ -36,17 +38,6 @@ struct Features {
     float thermal_centroid_x;
     float thermal_vertical_diff;
     float thermal_horizontal_diff;
-};
-
-// Forward declarations of your data types
-struct DopplerData {
-    float speed;
-    float range;
-    float energy;
-};
-
-struct ThermalFrame {
-    float* pixels; // 8x8 array flattened
 };
 
 // --- Feature Extraction Module ---
