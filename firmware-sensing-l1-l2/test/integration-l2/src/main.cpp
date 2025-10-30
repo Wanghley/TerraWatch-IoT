@@ -3,6 +3,8 @@
 #include "doppler.h"
 #include "thermal.h"
 #include "mic.h"
+#include "feature_extractor.h"
+#include "inference.h"
 
 // PIR pins: LPIR, CPIR, RPIR
 SleepManager sleepManager(12, 11, 10);
@@ -25,6 +27,14 @@ void setup()
     if (!setupThermalSensor())
     {
         Serial.println("Thermal sensor failed. Halting.");
+        while (1)
+            ;
+    }
+
+    // Initialize TFLite Micro
+    if (!Inference::begin())
+    {
+        Serial.println("Inference setup failed. Halting.");
         while (1)
             ;
     }
@@ -64,8 +74,23 @@ void setup()
 
         Serial.println("}"); // close sample object
 
+        // Feature extraction
+        unsigned long featureStart = millis();
+        float micRMSFloat = static_cast<float>(micRMS); // convert to float
+        Features features = FeatureExtractor::extractFeatures(
+            0, doppler, thermal, &micRMSFloat, 1, micRMS, lastPeak);
+
+        unsigned long featureExtractionTime = millis() - featureStart;
+        Serial.printf("Feature extraction time: %lu ms\n", featureExtractionTime);
+
+        FeatureExtractor::printFeatures(features);
+
+        // --- Run inference ---
+        float movementProb = Inference::predict(features);
+        Serial.printf("Movement probability: %.3f\n", movementProb);
+
         // Wait for next sample
-        unsigned long elapsed = millis() - startTime;
+        unsigned long elapsed = millis() - featureStart;
         unsigned long nextSampleTime = sampleCount * sampleIntervalMs;
         if (nextSampleTime > elapsed)
         {
@@ -79,5 +104,5 @@ void setup()
 
 void loop()
 {
-    // not used
+    // Not used: everything runs in setup() and then device sleeps
 }
