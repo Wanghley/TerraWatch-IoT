@@ -5,8 +5,8 @@
 // I2C pins
 #define I2C0_SDA 8
 #define I2C0_SCL 9
-#define I2C1_SDA 16
-#define I2C1_SCL 17
+#define I2C1_SDA 6
+#define I2C1_SCL 7
 
 // AMG8833 sensor instances
 Adafruit_AMG88xx amgLeft;
