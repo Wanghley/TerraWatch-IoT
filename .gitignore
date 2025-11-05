@@ -11,3 +11,16 @@
 # Precompiled Headers
 *.gch
 *.pch
+
+# MacOs DS_Store files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.AppleDouble
+.LSOverride
+
+# Results folder
+results/
+firmware-sensing-l3/data/
