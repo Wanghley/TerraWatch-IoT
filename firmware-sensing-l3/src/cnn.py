@@ -26,45 +26,95 @@ VIDEO_DEVICE = "/dev/video1"
 
 
 def capture_frame():
-    """Capture a frame from the video device using ffmpeg."""
-    print("Capturing frame from video device...")
-    cmd = [
-        "ffmpeg",
-        "-f", "video4linux2",
-        "-i", VIDEO_DEVICE,
-        "-vframes", "1",
-        "-y",  # Overwrite output file
-        "-t", "1",  # Limit capture time to 1 second
-        str(CAPTURE_OUTPUT)
-    ]
+    """Capture a frame from the video device using ffmpeg.
+    Captures multiple frames and uses the last one to allow autoexposure to settle."""
+    import os
+    
+    # Number of frames to capture for autoexposure settling
+    num_frames = 3
+    # Framerate to request from camera (set to None to use camera's default)
+    # Common values: 5, 10, 15, 30 fps (check what your camera supports)
+    framerate = 15  # 15 fps as supported by camera
+    # Resolution settings
+    video_width = 2592
+    video_height = 1944
+    
+    print(f"Capturing frame from video device ({num_frames} frames for autoexposure at {video_width}x{video_height} @ {framerate}fps)...")
     
     try:
+        last_frame_idx = num_frames - 1  # 0-indexed, so for 3 frames, last is frame 2
+        
+        # Optimized: Capture frames directly and extract only the last frame in one step
+        # This eliminates the need for a temporary file and second ffmpeg call
+        # Use list format to avoid shell parsing issues with the filter expression
+        cmd_capture = [
+            "ffmpeg",
+            "-f", "video4linux2",
+        ]
+        
+        # Add framerate option if specified (must come before -i)
+        if framerate is not None:
+            cmd_capture.extend(["-framerate", str(framerate)])
+        
+        # Add video size (must come before -i)
+        cmd_capture.extend(["-video_size", f"{video_width}x{video_height}"])
+        
+        # Add input and processing options
+        # ffmpeg's filter parser requires comma to be escaped as \, even in list format
+        filter_expr = f"select=gte(n\\,{last_frame_idx})"
+        cmd_capture.extend([
+            "-i", VIDEO_DEVICE,
+            "-vframes", str(num_frames),  # Process num_frames to allow autoexposure
+            "-vf", filter_expr,
+            "-frames:v", "1",  # Write only one frame to output
+            "-vsync", "0",
+            "-y",
+            str(CAPTURE_OUTPUT)
+        ])
+        
         result = subprocess.run(
-            cmd,
+            cmd_capture,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=True,
-            timeout=5  # 5 second timeout to prevent hanging
+            timeout=5  # Increased timeout to allow for camera initialization
         )
-        print(f"Frame captured successfully: {CAPTURE_OUTPUT}")
+        
+        # Verify the output frame file was created
+        if not os.path.exists(CAPTURE_OUTPUT):
+            print(f"Error: Frame file was not created at {CAPTURE_OUTPUT}")
+            return False
+        
+        # Check file size to ensure it's not empty
+        if os.path.getsize(CAPTURE_OUTPUT) == 0:
+            print(f"Error: Frame file is empty at {CAPTURE_OUTPUT}")
+            return False
+        
+        print(f"Frame captured successfully (using last of {num_frames} frames, frame {last_frame_idx}): {CAPTURE_OUTPUT}")
         return True
+            
     except subprocess.TimeoutExpired:
         print("Error: Frame capture timed out after 5 seconds")
         return False
     except subprocess.CalledProcessError as e:
         error_msg = e.stderr.decode() if e.stderr else str(e)
         print(f"Error capturing frame: {error_msg}")
+        # Print first 500 chars of stderr for debugging
+        if error_msg:
+            print(f"FFmpeg error details: {error_msg[:500]}")
+        return False
+    except Exception as e:
+        print(f"Unexpected error: {e}")
         return False
 
 
 def copy_frame_to_yolo_input():
     """Copy the captured frame to YOLO input directory."""
-    print(f"Copying frame to YOLO input directory...")
     try:
         # Ensure input_data directory exists
         YOLO_INPUT.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(CAPTURE_OUTPUT, YOLO_INPUT)
-        print(f"Frame copied to: {YOLO_INPUT}")
+        # Use copy instead of copy2 to avoid copying metadata (faster)
+        shutil.copy(CAPTURE_OUTPUT, YOLO_INPUT)
         return True
     except Exception as e:
         print(f"Error copying frame: {e}")
@@ -119,12 +169,11 @@ def save_results(detection_lines):
     # Ensure results directory exists
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     
-    # Copy result image
+    # Copy result image (use copy instead of copy2 for speed)
     result_image = RESULTS_DIR / f"result_{timestamp}.png"
     try:
         if YOLO_RESULT.exists():
-            shutil.copy2(YOLO_RESULT, result_image)
-            print(f"Result image saved: {result_image}")
+            shutil.copy(YOLO_RESULT, result_image)
         else:
             print(f"Warning: Result image not found at {YOLO_RESULT}")
     except Exception as e:
@@ -134,9 +183,9 @@ def save_results(detection_lines):
     result_labels = RESULTS_DIR / f"result_{timestamp}.txt"
     try:
         with open(result_labels, 'w') as f:
-            for line in detection_lines:
-                f.write(line + '\n')
-        print(f"Detection labels saved: {result_labels}")
+            f.write('\n'.join(detection_lines))
+            if detection_lines:  # Add newline at end if there are lines
+                f.write('\n')
         return True
     except Exception as e:
         print(f"Error saving detection labels: {e}")
@@ -175,3 +224,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
