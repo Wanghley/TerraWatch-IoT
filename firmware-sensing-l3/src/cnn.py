@@ -34,18 +34,21 @@ def capture_frame():
     num_frames = 3
     # Framerate to request from camera (set to None to use camera's default)
     # Common values: 5, 10, 15, 30 fps (check what your camera supports)
-    framerate = 15  # 15 fps as supported by camera
+    framerate = 10  # 10 fps as supported by camera
     # Resolution settings
-    video_width = 2592
-    video_height = 1944
+    video_width = 1280
+    video_height = 720
     
     print(f"Capturing frame from video device ({num_frames} frames for autoexposure at {video_width}x{video_height} @ {framerate}fps)...")
+    
+    # Ensure YOLO input directory exists
+    YOLO_INPUT.parent.mkdir(parents=True, exist_ok=True)
     
     try:
         last_frame_idx = num_frames - 1  # 0-indexed, so for 3 frames, last is frame 2
         
-        # Optimized: Capture frames directly and extract only the last frame in one step
-        # This eliminates the need for a temporary file and second ffmpeg call
+        # Optimized: Capture frames directly to YOLO input directory
+        # This eliminates the need for a temporary file, second ffmpeg call, and copy operation
         # Use list format to avoid shell parsing issues with the filter expression
         cmd_capture = [
             "ffmpeg",
@@ -69,7 +72,7 @@ def capture_frame():
             "-frames:v", "1",  # Write only one frame to output
             "-vsync", "0",
             "-y",
-            str(CAPTURE_OUTPUT)
+            str(YOLO_INPUT)  # Write directly to YOLO input directory
         ])
         
         result = subprocess.run(
@@ -81,16 +84,16 @@ def capture_frame():
         )
         
         # Verify the output frame file was created
-        if not os.path.exists(CAPTURE_OUTPUT):
-            print(f"Error: Frame file was not created at {CAPTURE_OUTPUT}")
+        if not os.path.exists(YOLO_INPUT):
+            print(f"Error: Frame file was not created at {YOLO_INPUT}")
             return False
         
         # Check file size to ensure it's not empty
-        if os.path.getsize(CAPTURE_OUTPUT) == 0:
-            print(f"Error: Frame file is empty at {CAPTURE_OUTPUT}")
+        if os.path.getsize(YOLO_INPUT) == 0:
+            print(f"Error: Frame file is empty at {YOLO_INPUT}")
             return False
         
-        print(f"Frame captured successfully (using last of {num_frames} frames, frame {last_frame_idx}): {CAPTURE_OUTPUT}")
+        print(f"Frame captured successfully (using last of {num_frames} frames, frame {last_frame_idx}): {YOLO_INPUT}")
         return True
             
     except subprocess.TimeoutExpired:
@@ -105,19 +108,6 @@ def capture_frame():
         return False
     except Exception as e:
         print(f"Unexpected error: {e}")
-        return False
-
-
-def copy_frame_to_yolo_input():
-    """Copy the captured frame to YOLO input directory."""
-    try:
-        # Ensure input_data directory exists
-        YOLO_INPUT.parent.mkdir(parents=True, exist_ok=True)
-        # Use copy instead of copy2 to avoid copying metadata (faster)
-        shutil.copy(CAPTURE_OUTPUT, YOLO_INPUT)
-        return True
-    except Exception as e:
-        print(f"Error copying frame: {e}")
         return False
 
 
@@ -198,23 +188,18 @@ def main():
     print("YOLOv5 Inference Pipeline")
     print("=" * 60)
     
-    # Step 1: Capture frame
+    # Step 1: Capture frame directly to YOLO input directory
     if not capture_frame():
         print("Failed to capture frame. Exiting.")
         return
     
-    # Step 2: Copy frame to YOLO input directory
-    if not copy_frame_to_yolo_input():
-        print("Failed to copy frame. Exiting.")
-        return
-    
-    # Step 3: Run YOLO inference
+    # Step 2: Run YOLO inference
     detection_lines, success = run_yolo_inference()
     if not success:
         print("Failed to run YOLO inference. Exiting.")
         return
     
-    # Step 4 & 5: Save results
+    # Step 3: Save results
     save_results(detection_lines)
     
     print("=" * 60)
