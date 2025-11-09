@@ -3,36 +3,40 @@
 
 // Initialize the static variable
 volatile bool WifiManager::_wifiConnected = false;
+static WifiManager* instancePtr = nullptr;
+
 WifiManager::WifiManager(const char* ssid, const char* password, bool debug)
-  : _ssid(ssid), _password(password) {
-  _debug = debug;
-  // Constructor body is empty, setup is done in connect()
+  : _ssid(ssid), _password(password), _debug(debug) {
+    instancePtr = this; // store pointer for static handler
 }
 
+
 void WifiManager::handleWiFiEvent(WiFiEvent_t event) {
-  switch (event) {
-    case ARDUINO_EVENT_WIFI_STA_START:
-      if (WifiManager::_debug) {
-        Serial.println("WiFi STA Started, attempting to connect...");
-      }
-      break;
-    case ARDUINO_EVENT_WIFI_STA_GOT_IP:
-      if (WifiManager::_debug) {
-        Serial.print("WiFi connected! IP address: ");
-        Serial.println(WiFi.localIP());
-      }
-      _wifiConnected = true;
-      break;
-    case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
-      if (WifiManager::_debug) {
-        Serial.println("WiFi disconnected, will retry...");
-      }
-      _wifiConnected = false;
-      break;
-    default:
-      break;
-  }
+    if (!instancePtr) return;
+
+    if (instancePtr->_debug) {
+        switch (event) {
+            case ARDUINO_EVENT_WIFI_STA_START:
+                Serial.println("WiFi STA Started...");
+                break;
+            case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+                Serial.print("WiFi connected! IP: ");
+                Serial.println(WiFi.localIP());
+                break;
+            case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
+                Serial.println("WiFi disconnected.");
+                break;
+            default: break;
+        }
+    }
+
+    if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
+        _wifiConnected = true;
+    } else if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+        _wifiConnected = false;
+    }
 }
+
 
 void WifiManager::connect() {
   _wifiConnected = false;

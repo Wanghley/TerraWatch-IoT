@@ -22,7 +22,7 @@ public:
 private:
     const char* _ssid;
     const char* _password;
-    static bool _debug;
+    bool _debug;
 
     // This is the static event handler required by the ESP-IDF
     static void handleWiFiEvent(WiFiEvent_t event);
