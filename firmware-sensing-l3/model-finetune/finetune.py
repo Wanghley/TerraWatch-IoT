@@ -2,19 +2,33 @@ import argparse
 import json
 import random
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader, random_split
 from torchvision import datasets, models, transforms
+from torchvision.utils import save_image
 from tqdm.auto import tqdm
 
-MAX_TRAIN_BATCHES: Optional[int] = None
+try:
+    import kornia.augmentation as K
+except ImportError:  # pragma: no cover - Kornia optional
+    K = None
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATA_DIR = PROJECT_ROOT / "data" / "frames"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "model-finetune" / "output"
+IMAGENET_MEAN = [0.485, 0.456, 0.406]
+IMAGENET_STD = [0.229, 0.224, 0.225]
+PREVIEWS_DIR = PROJECT_ROOT / "model-finetune" / "previews"
+
+MAX_TRAIN_BATCHES: Optional[int] = None
 
 
 def parse_args() -> argparse.Namespace:
@@ -33,10 +47,10 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_OUTPUT_DIR,
         help="Directory to store checkpoints and logs.",
     )
-    parser.add_argument("--arch", choices=["resnet18", "resnet34", "resnet50"], default="resnet18")
+    parser.add_argument("--arch", choices=["resnet18", "resnet34", "resnet50"], default="resnet50")
     parser.add_argument("--pretrained", action="store_true", help="Use ImageNet pre-trained weights.")
     parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--epochs", type=int, default=30)
+    parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--learning-rate", type=float, default=5e-4)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument("--momentum", type=float, default=0.9)
@@ -44,7 +58,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--val-split", type=float, default=0.15)
     parser.add_argument("--test-split", type=float, default=0.15)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--image-size", type=int, default=224)
+    parser.add_argument("--image-size", type=int, default=448)
     parser.add_argument("--threshold", type=float, default=0.5, help="Decision threshold for evaluation.")
     parser.add_argument(
         "--resume",
@@ -72,6 +86,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Run evaluation only on the test split using the latest checkpoint.",
     )
+    parser.add_argument(
+        "--preview-limit",
+        type=int,
+        default=50,
+        help="Number of augmented training samples to save as previews (0 disables).",
+    )
     return parser.parse_args()
 
 
@@ -86,16 +106,14 @@ def get_device() -> torch.device:
 
 
 def build_transforms(image_size: int) -> Tuple[transforms.Compose, transforms.Compose]:
-    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    train_transform = transforms.Compose(
-        [
-            transforms.Resize((image_size, image_size)),
-            # transforms.RandomHorizontalFlip(),
-            # transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05),
-            transforms.ToTensor(),
-            normalize,
-        ]
-    )
+    normalize = transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
+    train_ops: List = [
+        transforms.Resize((image_size, image_size)),
+        transforms.ToTensor(),
+    ]
+    if K is None:
+        train_ops.append(normalize)
+    train_transform = transforms.Compose(train_ops)
     eval_transform = transforms.Compose(
         [
             transforms.Resize((image_size, image_size)),
@@ -104,6 +122,84 @@ def build_transforms(image_size: int) -> Tuple[transforms.Compose, transforms.Co
         ]
     )
     return train_transform, eval_transform
+
+
+def build_gpu_augmentations(device: torch.device) -> Optional[nn.Module]:
+    if K is None:
+        print("Kornia not found; skipping GPU augmentations.")
+        return None
+
+    mean = torch.tensor(IMAGENET_MEAN, device=device)
+    std = torch.tensor(IMAGENET_STD, device=device)
+
+    augmentations = K.AugmentationSequential(
+        K.RandomHorizontalFlip(p=0.5),
+        K.ColorJitter(brightness=0.05, contrast=0.001, saturation=0.002, hue=0.02, p=0.8),
+        # K.RandomBoxBlur(kernel_size=(3, 3), p=0.2),
+        # K.Normalize(mean=mean, std=std),
+        data_keys=["input"],
+    ).to(device)
+    augmentations.train()
+    return augmentations
+
+
+class PreviewSaver:
+    def __init__(self, directory: Path, limit: int, mean: Sequence[float], std: Sequence[float]) -> None:
+        self.directory = directory
+        self.directory.mkdir(parents=True, exist_ok=True)
+        self.limit = max(limit, 0)
+        self.saved = 0
+        self.mean = torch.tensor(mean).view(1, -1, 1, 1)
+        self.std = torch.tensor(std).view(1, -1, 1, 1)
+
+    def maybe_save(self, images: torch.Tensor) -> None:
+        if self.saved >= self.limit or self.limit == 0:
+            return
+
+        remaining = self.limit - self.saved
+        batch = images.detach().cpu()
+        batch = batch * self.std + self.mean
+        batch = batch.clamp(0.0, 1.0)
+        batch = batch[:remaining]
+
+        for idx, img in enumerate(batch):
+            save_path = self.directory / f"preview_{self.saved + idx:03d}.png"
+            save_image(img, save_path)
+
+        self.saved += len(batch)
+
+
+def plot_training_curves(
+    epoch_indices: List[int],
+    train_losses: List[float],
+    val_losses: List[float],
+    val_accs: List[float],
+    output_dir: Path,
+) -> None:
+    if not train_losses:
+        return
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    fig, (ax_loss, ax_acc) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+
+    ax_loss.plot(epoch_indices, train_losses, label="Train Loss", marker="o")
+    ax_loss.plot(epoch_indices, val_losses, label="Val Loss", marker="s")
+    ax_loss.set_ylabel("Loss")
+    ax_loss.set_title("Training and Validation Loss")
+    ax_loss.legend()
+    ax_loss.grid(True, linestyle="--", alpha=0.5)
+
+    ax_acc.plot(epoch_indices, val_accs, label="Val Subset Accuracy", color="tab:green", marker="^")
+    ax_acc.set_xlabel("Epoch")
+    ax_acc.set_ylabel("Subset Accuracy")
+    ax_acc.set_title("Validation Accuracy")
+    ax_acc.grid(True, linestyle="--", alpha=0.5)
+
+    plt.tight_layout()
+    output_path = output_dir / "training_curves.png"
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+    print(f"Saved training curves to {output_path}")
 
 
 class MultiHotTransform:
@@ -245,6 +341,8 @@ def train_one_epoch(
     optimizer: optim.Optimizer,
     criterion: nn.Module,
     device: torch.device,
+    augmentations: Optional[nn.Module] = None,
+    preview_saver: Optional[PreviewSaver] = None,
 ) -> float:
     model.train()
     running_loss = 0.0
@@ -255,12 +353,19 @@ def train_one_epoch(
         total_batches = min(total_batches, MAX_TRAIN_BATCHES)
 
     progress = tqdm(total=total_batches, desc="Train 0/{}".format(total_batches), leave=False)
+    if augmentations is not None:
+        augmentations.train()
 
     for batch_idx, (images, targets) in enumerate(dataloader):
         if MAX_TRAIN_BATCHES is not None and batch_idx >= MAX_TRAIN_BATCHES:
             break
         images = images.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
+
+        if augmentations is not None:
+            images = augmentations(images)
+        if preview_saver is not None:
+            preview_saver.maybe_save(images)
 
         optimizer.zero_grad(set_to_none=True)
         logits = model(images)
@@ -537,6 +642,7 @@ def main() -> None:
 
     model = build_model(args.arch, num_classes=num_classes, pretrained=args.pretrained)
     model.to(device)
+    gpu_augmentations = build_gpu_augmentations(device)
 
     criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.SGD(
@@ -583,6 +689,15 @@ def main() -> None:
 
     save_class_index(args.output_dir, class_names)
 
+    preview_saver: Optional[PreviewSaver] = None
+    if args.preview_limit > 0:
+        preview_saver = PreviewSaver(PREVIEWS_DIR, args.preview_limit, IMAGENET_MEAN, IMAGENET_STD)
+
+    epoch_indices: List[int] = []
+    train_history: List[float] = []
+    val_loss_history: List[float] = []
+    val_acc_history: List[float] = []
+
     for epoch in range(start_epoch, args.epochs):
         print(f"\nEpoch {epoch + 1}/{args.epochs}")
 
@@ -592,6 +707,8 @@ def main() -> None:
             optimizer=optimizer,
             criterion=criterion,
             device=device,
+            augmentations=gpu_augmentations,
+            preview_saver=preview_saver,
         )
         print(f"Train Loss: {train_loss:.4f}")
 
@@ -608,6 +725,11 @@ def main() -> None:
             "Subset Acc: {subset_accuracy:.4f}".format(**val_metrics)
         )
 
+        epoch_indices.append(epoch + 1)
+        train_history.append(train_loss)
+        val_loss_history.append(val_metrics["loss"])
+        val_acc_history.append(val_metrics["subset_accuracy"])
+
         if val_metrics["macro_f1"] > best_metric:
             best_metric = val_metrics["macro_f1"]
         if val_metrics["loss"] < best_val_loss:
@@ -620,7 +742,31 @@ def main() -> None:
             print(f"Val loss did not improve. Patience counter: {patience_counter}/{args.patience}")
             if patience_counter >= args.patience:
                 print("Early stopping triggered.")
+                plot_training_curves(
+                    epoch_indices=epoch_indices,
+                    train_losses=train_history,
+                    val_losses=val_loss_history,
+                    val_accs=val_acc_history,
+                    output_dir=args.output_dir,
+                )
                 break
+
+        plot_training_curves(
+            epoch_indices=epoch_indices,
+            train_losses=train_history,
+            val_losses=val_loss_history,
+            val_accs=val_acc_history,
+            output_dir=args.output_dir,
+        )
+
+    else:
+        plot_training_curves(
+            epoch_indices=epoch_indices,
+            train_losses=train_history,
+            val_losses=val_loss_history,
+            val_accs=val_acc_history,
+            output_dir=args.output_dir,
+        )
 
     print("\nEvaluating best checkpoint on test set...")
     best_ckpt_path = args.output_dir / "best.ckpt"
