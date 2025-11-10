@@ -1,0 +1,605 @@
+2025-11-06 09:22:44,473:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2025-11-06 09:22:44,473:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2025-11-06 09:22:44,473:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2025-11-06 09:22:44,473:WARNING:
+'cuml' is a soft dependency and not included in the pycaret installation. Please run: `pip install cuml` to install.
+2025-11-06 09:22:45,180:INFO:PyCaret ClassificationExperiment
+2025-11-06 09:22:45,180:INFO:Logging name: clf-default-name
+2025-11-06 09:22:45,180:INFO:ML Usecase: MLUsecase.CLASSIFICATION
+2025-11-06 09:22:45,180:INFO:version 3.3.2
+2025-11-06 09:22:45,180:INFO:Initializing setup()
+2025-11-06 09:22:45,180:INFO:self.USI: 2948
+2025-11-06 09:22:45,180:INFO:self._variable_keys: {'_ml_usecase', 'logging_param', 'y_test', 'n_jobs_param', 'log_plots_param', 'html_param', 'X_test', '_available_plots', 'pipeline', 'exp_id', 'X', 'target_param', 'memory', 'fold_shuffle_param', 'fold_generator', 'y_train', 'fold_groups_param', 'idx', 'fix_imbalance', 'is_multiclass', 'y', 'USI', 'gpu_param', 'exp_name_log', 'data', 'gpu_n_jobs_param', 'X_train', 'seed'}
+2025-11-06 09:22:45,180:INFO:Checking environment
+2025-11-06 09:22:45,180:INFO:python_version: 3.9.6
+2025-11-06 09:22:45,180:INFO:python_build: ('default', 'Aug  8 2025 19:06:38')
+2025-11-06 09:22:45,180:INFO:machine: arm64
+2025-11-06 09:22:45,180:INFO:platform: macOS-26.0.1-arm64-arm-64bit
+2025-11-06 09:22:45,180:INFO:Memory: svmem(total=25769803776, available=4386684928, percent=83.0, used=7746256896, free=71073792, active=4327669760, inactive=4272783360, wired=3418587136)
+2025-11-06 09:22:45,180:INFO:Physical Core: 8
+2025-11-06 09:22:45,180:INFO:Logical Core: 8
+2025-11-06 09:22:45,180:INFO:Checking libraries
+2025-11-06 09:22:45,180:INFO:System:
+2025-11-06 09:22:45,180:INFO:    python: 3.9.6 (default, Aug  8 2025, 19:06:38)  [Clang 17.0.0 (clang-1700.3.19.1)]
+2025-11-06 09:22:45,180:INFO:executable: /Users/wanghley/Workspace/Projects/Agronauts/firmware-sensing-l1-l2/test/integration-l2/.venv/bin/python
+2025-11-06 09:22:45,180:INFO:   machine: macOS-26.0.1-arm64-arm-64bit
+2025-11-06 09:22:45,180:INFO:PyCaret required dependencies:
+2025-11-06 09:22:45,310:INFO:                 pip: 25.3
+2025-11-06 09:22:45,310:INFO:          setuptools: 58.0.4
+2025-11-06 09:22:45,310:INFO:             pycaret: 3.3.2
+2025-11-06 09:22:45,310:INFO:             IPython: 8.18.1
+2025-11-06 09:22:45,310:INFO:          ipywidgets: 8.1.7
+2025-11-06 09:22:45,310:INFO:                tqdm: 4.67.1
+2025-11-06 09:22:45,310:INFO:               numpy: 1.26.4
+2025-11-06 09:22:45,310:INFO:              pandas: 2.1.4
+2025-11-06 09:22:45,310:INFO:              jinja2: 3.1.6
+2025-11-06 09:22:45,310:INFO:               scipy: 1.11.4
+2025-11-06 09:22:45,310:INFO:              joblib: 1.3.2
+2025-11-06 09:22:45,310:INFO:             sklearn: 1.4.2
+2025-11-06 09:22:45,310:INFO:                pyod: 2.0.5
+2025-11-06 09:22:45,311:INFO:            imblearn: 0.12.4
+2025-11-06 09:22:45,311:INFO:   category_encoders: 2.6.4
+2025-11-06 09:22:45,311:INFO:            lightgbm: 4.6.0
+2025-11-06 09:22:45,311:INFO:               numba: 0.60.0
+2025-11-06 09:22:45,311:INFO:            requests: 2.32.5
+2025-11-06 09:22:45,311:INFO:          matplotlib: 3.7.5
+2025-11-06 09:22:45,311:INFO:          scikitplot: 0.3.7
+2025-11-06 09:22:45,311:INFO:         yellowbrick: 1.5
+2025-11-06 09:22:45,311:INFO:              plotly: 6.3.1
+2025-11-06 09:22:45,311:INFO:    plotly-resampler: Not installed
+2025-11-06 09:22:45,311:INFO:             kaleido: 1.1.0
+2025-11-06 09:22:45,311:INFO:           schemdraw: 0.15
+2025-11-06 09:22:45,311:INFO:         statsmodels: 0.14.5
+2025-11-06 09:22:45,311:INFO:              sktime: 0.26.0
+2025-11-06 09:22:45,311:INFO:               tbats: 1.1.3
+2025-11-06 09:22:45,311:INFO:            pmdarima: 2.0.4
+2025-11-06 09:22:45,311:INFO:              psutil: 7.1.2
+2025-11-06 09:22:45,311:INFO:          markupsafe: 3.0.3
+2025-11-06 09:22:45,311:INFO:             pickle5: Not installed
+2025-11-06 09:22:45,311:INFO:         cloudpickle: 3.1.1
+2025-11-06 09:22:45,311:INFO:         deprecation: 2.1.0
+2025-11-06 09:22:45,311:INFO:              xxhash: 3.6.0
+2025-11-06 09:22:45,311:INFO:           wurlitzer: 3.1.1
+2025-11-06 09:22:45,311:INFO:PyCaret optional dependencies:
+2025-11-06 09:22:45,318:INFO:                shap: Not installed
+2025-11-06 09:22:45,318:INFO:           interpret: Not installed
+2025-11-06 09:22:45,319:INFO:                umap: Not installed
+2025-11-06 09:22:45,319:INFO:     ydata_profiling: Not installed
+2025-11-06 09:22:45,319:INFO:  explainerdashboard: Not installed
+2025-11-06 09:22:45,319:INFO:             autoviz: Not installed
+2025-11-06 09:22:45,319:INFO:           fairlearn: Not installed
+2025-11-06 09:22:45,319:INFO:          deepchecks: Not installed
+2025-11-06 09:22:45,319:INFO:             xgboost: Not installed
+2025-11-06 09:22:45,319:INFO:            catboost: Not installed
+2025-11-06 09:22:45,319:INFO:              kmodes: Not installed
+2025-11-06 09:22:45,319:INFO:             mlxtend: Not installed
+2025-11-06 09:22:45,319:INFO:       statsforecast: Not installed
+2025-11-06 09:22:45,319:INFO:        tune_sklearn: Not installed
+2025-11-06 09:22:45,319:INFO:                 ray: Not installed
+2025-11-06 09:22:45,319:INFO:            hyperopt: Not installed
+2025-11-06 09:22:45,319:INFO:              optuna: Not installed
+2025-11-06 09:22:45,319:INFO:               skopt: Not installed
+2025-11-06 09:22:45,319:INFO:              mlflow: Not installed
+2025-11-06 09:22:45,319:INFO:              gradio: Not installed
+2025-11-06 09:22:45,319:INFO:             fastapi: Not installed
+2025-11-06 09:22:45,319:INFO:             uvicorn: Not installed
+2025-11-06 09:22:45,319:INFO:              m2cgen: Not installed
+2025-11-06 09:22:45,319:INFO:           evidently: Not installed
+2025-11-06 09:22:45,319:INFO:               fugue: Not installed
+2025-11-06 09:22:45,319:INFO:           streamlit: Not installed
+2025-11-06 09:22:45,319:INFO:             prophet: Not installed
+2025-11-06 09:22:45,319:INFO:None
+2025-11-06 09:22:45,319:INFO:Set up data.
+2025-11-06 09:22:45,322:INFO:Set up folding strategy.
+2025-11-06 09:22:45,322:INFO:Set up train/test split.
+2025-11-06 09:22:45,324:INFO:Set up index.
+2025-11-06 09:22:45,324:INFO:Assigning column types.
+2025-11-06 09:22:45,326:INFO:Engine successfully changes for model 'lr' to 'sklearn'.
+2025-11-06 09:22:45,346:INFO:Engine for model 'knn' has not been set explicitly, hence returning None.
+2025-11-06 09:22:45,348:INFO:Engine for model 'rbfsvm' has not been set explicitly, hence returning None.
+2025-11-06 09:22:45,364:WARNING:
+'xgboost' is a soft dependency and not included in the pycaret installation. Please run: `pip install xgboost` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2025-11-06 09:22:45,364:WARNING:
+'catboost' is a soft dependency and not included in the pycaret installation. Please run: `pip install catboost` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2025-11-06 09:22:45,383:INFO:Engine for model 'knn' has not been set explicitly, hence returning None.
+2025-11-06 09:22:45,383:INFO:Engine for model 'rbfsvm' has not been set explicitly, hence returning None.
+2025-11-06 09:22:45,396:WARNING:
+'xgboost' is a soft dependency and not included in the pycaret installation. Please run: `pip install xgboost` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2025-11-06 09:22:45,396:WARNING:
+'catboost' is a soft dependency and not included in the pycaret installation. Please run: `pip install catboost` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2025-11-06 09:22:45,396:INFO:Engine successfully changes for model 'knn' to 'sklearn'.
+2025-11-06 09:22:45,417:INFO:Engine for model 'rbfsvm' has not been set explicitly, hence returning None.
+2025-11-06 09:22:45,429:WARNING:
+'xgboost' is a soft dependency and not included in the pycaret installation. Please run: `pip install xgboost` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2025-11-06 09:22:45,429:WARNING:
+'catboost' is a soft dependency and not included in the pycaret installation. Please run: `pip install catboost` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2025-11-06 09:22:45,449:INFO:Engine for model 'rbfsvm' has not been set explicitly, hence returning None.
+2025-11-06 09:22:45,461:WARNING:
+'xgboost' is a soft dependency and not included in the pycaret installation. Please run: `pip install xgboost` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2025-11-06 09:22:45,462:WARNING:
+'catboost' is a soft dependency and not included in the pycaret installation. Please run: `pip install catboost` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2025-11-06 09:22:45,462:INFO:Engine successfully changes for model 'rbfsvm' to 'sklearn'.
+2025-11-06 09:22:45,494:WARNING:
+'xgboost' is a soft dependency and not included in the pycaret installation. Please run: `pip install xgboost` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2025-11-06 09:22:45,494:WARNING:
+'catboost' is a soft dependency and not included in the pycaret installation. Please run: `pip install catboost` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2025-11-06 09:22:45,527:WARNING:
+'xgboost' is a soft dependency and not included in the pycaret installation. Please run: `pip install xgboost` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2025-11-06 09:22:45,528:WARNING:
+'catboost' is a soft dependency and not included in the pycaret installation. Please run: `pip install catboost` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2025-11-06 09:22:45,530:INFO:Preparing preprocessing pipeline...
+2025-11-06 09:22:45,530:INFO:Set up simple imputation.
+2025-11-06 09:22:45,530:INFO:Set up feature normalization.
+2025-11-06 09:22:45,547:INFO:Finished creating preprocessing pipeline.
+2025-11-06 09:22:45,550:INFO:Pipeline: Pipeline(memory=FastMemory(location=/var/folders/r5/m5977dy13hd_9klxgsmylm740000gn/T/joblib),
+         steps=[('numerical_imputer',
+                 TransformerWrapper(exclude=None,
+                                    include=['doppler_speed', 'doppler_range',
+                                             'doppler_energy', 'mic_rms_mean',
+                                             'mic_peak_mean',
+                                             'mic_rms_samples_mean',
+                                             'mic_rms_samples_std',
+                                             'mic_rms_samples_min',
+                                             'mic_rms_samples_max',
+                                             'thermal_mean', 'the...
+                ('categorical_imputer',
+                 TransformerWrapper(exclude=None, include=[],
+                                    transformer=SimpleImputer(add_indicator=False,
+                                                              copy=True,
+                                                              fill_value=None,
+                                                              keep_empty_features=False,
+                                                              missing_values=nan,
+                                                              strategy='most_frequent'))),
+                ('normalize',
+                 TransformerWrapper(exclude=None, include=None,
+                                    transformer=StandardScaler(copy=True,
+                                                               with_mean=True,
+                                                               with_std=True)))],
+         verbose=False)
+2025-11-06 09:22:45,550:INFO:Creating final display dataframe.
+2025-11-06 09:22:45,599:INFO:Setup _display_container:                     Description             Value
+0                    Session id               123
+1                        Target             label
+2                   Target type            Binary
+3           Original data shape         (500, 18)
+4        Transformed data shape         (500, 18)
+5   Transformed train set shape         (400, 18)
+6    Transformed test set shape         (100, 18)
+7              Numeric features                17
+8                    Preprocess              True
+9               Imputation type            simple
+10           Numeric imputation              mean
+11       Categorical imputation              mode
+12                    Normalize              True
+13             Normalize method            zscore
+14               Fold Generator   StratifiedKFold
+15                  Fold Number                10
+16                     CPU Jobs                -1
+17                      Use GPU             False
+18               Log Experiment             False
+19              Experiment Name  clf-default-name
+20                          USI              2948
+2025-11-06 09:22:45,635:WARNING:
+'xgboost' is a soft dependency and not included in the pycaret installation. Please run: `pip install xgboost` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2025-11-06 09:22:45,638:WARNING:
+'catboost' is a soft dependency and not included in the pycaret installation. Please run: `pip install catboost` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2025-11-06 09:22:45,674:WARNING:
+'xgboost' is a soft dependency and not included in the pycaret installation. Please run: `pip install xgboost` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2025-11-06 09:22:45,674:WARNING:
+'catboost' is a soft dependency and not included in the pycaret installation. Please run: `pip install catboost` to install.
+Alternately, you can install this by running `pip install pycaret[models]`
+2025-11-06 09:22:45,675:INFO:setup() successfully completed in 0.5s...............
+2025-11-06 09:22:45,680:INFO:Initializing compare_models()
+2025-11-06 09:22:45,680:INFO:compare_models(self=<pycaret.classification.oop.ClassificationExperiment object at 0x13b4809d0>, include=['lr', 'nb', 'dt', 'svm', 'ridge'], fold=None, round=4, cross_validation=True, sort=Accuracy, n_select=1, budget_time=None, turbo=True, errors=ignore, fit_kwargs=None, groups=None, experiment_custom_tags=None, probability_threshold=None, verbose=True, parallel=None, caller_params={'self': <pycaret.classification.oop.ClassificationExperiment object at 0x13b4809d0>, 'include': ['lr', 'nb', 'dt', 'svm', 'ridge'], 'exclude': None, 'fold': None, 'round': 4, 'cross_validation': True, 'sort': 'Accuracy', 'n_select': 1, 'budget_time': None, 'turbo': True, 'errors': 'ignore', 'fit_kwargs': None, 'groups': None, 'experiment_custom_tags': None, 'probability_threshold': None, 'engine': None, 'verbose': True, 'parallel': None, '__class__': <class 'pycaret.classification.oop.ClassificationExperiment'>}, exclude=None)
+2025-11-06 09:22:45,681:INFO:Checking exceptions
+2025-11-06 09:22:45,685:INFO:Preparing display monitor
+2025-11-06 09:22:45,735:INFO:Initializing Logistic Regression
+2025-11-06 09:22:45,735:INFO:Total runtime is 3.3497810363769533e-06 minutes
+2025-11-06 09:22:45,735:INFO:SubProcess create_model() called ==================================
+2025-11-06 09:22:45,736:INFO:Initializing create_model()
+2025-11-06 09:22:45,736:INFO:create_model(self=<pycaret.classification.oop.ClassificationExperiment object at 0x13b4809d0>, estimator=lr, fold=StratifiedKFold(n_splits=10, random_state=None, shuffle=False), round=4, cross_validation=True, predict=True, fit_kwargs={}, groups=None, refit=False, probability_threshold=None, experiment_custom_tags=None, verbose=False, system=False, add_to_model_list=True, metrics=None, display=<pycaret.internal.display.display.CommonDisplay object at 0x13b375820>, model_only=True, return_train_score=False, error_score=0.0, kwargs={})
+2025-11-06 09:22:45,736:INFO:Checking exceptions
+2025-11-06 09:22:45,736:INFO:Importing libraries
+2025-11-06 09:22:45,736:INFO:Copying training dataset
+2025-11-06 09:22:45,742:INFO:Defining folds
+2025-11-06 09:22:45,743:INFO:Declaring metric variables
+2025-11-06 09:22:45,743:INFO:Importing untrained model
+2025-11-06 09:22:45,743:INFO:Logistic Regression Imported successfully
+2025-11-06 09:22:45,743:INFO:Starting cross validation
+2025-11-06 09:22:45,744:INFO:Cross validating with StratifiedKFold(n_splits=10, random_state=None, shuffle=False), n_jobs=-1
+2025-11-06 09:22:51,076:INFO:Calculating mean and std
+2025-11-06 09:22:51,080:INFO:Creating metrics dataframe
+2025-11-06 09:22:51,088:INFO:Uploading results into container
+2025-11-06 09:22:51,092:INFO:Uploading model into container now
+2025-11-06 09:22:51,093:INFO:_master_model_container: 1
+2025-11-06 09:22:51,093:INFO:_display_container: 2
+2025-11-06 09:22:51,093:INFO:LogisticRegression(C=1.0, class_weight=None, dual=False, fit_intercept=True,
+                   intercept_scaling=1, l1_ratio=None, max_iter=1000,
+                   multi_class='auto', n_jobs=None, penalty='l2',
+                   random_state=123, solver='lbfgs', tol=0.0001, verbose=0,
+                   warm_start=False)
+2025-11-06 09:22:51,093:INFO:create_model() successfully completed......................................
+2025-11-06 09:22:51,219:INFO:SubProcess create_model() end ==================================
+2025-11-06 09:22:51,222:INFO:Creating metrics dataframe
+2025-11-06 09:22:51,224:INFO:Initializing Naive Bayes
+2025-11-06 09:22:51,227:INFO:Total runtime is 0.09154169956843058 minutes
+2025-11-06 09:22:51,227:INFO:SubProcess create_model() called ==================================
+2025-11-06 09:22:51,227:INFO:Initializing create_model()
+2025-11-06 09:22:51,227:INFO:create_model(self=<pycaret.classification.oop.ClassificationExperiment object at 0x13b4809d0>, estimator=nb, fold=StratifiedKFold(n_splits=10, random_state=None, shuffle=False), round=4, cross_validation=True, predict=True, fit_kwargs={}, groups=None, refit=False, probability_threshold=None, experiment_custom_tags=None, verbose=False, system=False, add_to_model_list=True, metrics=None, display=<pycaret.internal.display.display.CommonDisplay object at 0x13b375820>, model_only=True, return_train_score=False, error_score=0.0, kwargs={})
+2025-11-06 09:22:51,227:INFO:Checking exceptions
+2025-11-06 09:22:51,227:INFO:Importing libraries
+2025-11-06 09:22:51,227:INFO:Copying training dataset
+2025-11-06 09:22:51,231:INFO:Defining folds
+2025-11-06 09:22:51,234:INFO:Declaring metric variables
+2025-11-06 09:22:51,235:INFO:Importing untrained model
+2025-11-06 09:22:51,235:INFO:Naive Bayes Imported successfully
+2025-11-06 09:22:51,236:INFO:Starting cross validation
+2025-11-06 09:22:51,237:INFO:Cross validating with StratifiedKFold(n_splits=10, random_state=None, shuffle=False), n_jobs=-1
+2025-11-06 09:22:51,343:INFO:Calculating mean and std
+2025-11-06 09:22:51,346:INFO:Creating metrics dataframe
+2025-11-06 09:22:51,347:INFO:Uploading results into container
+2025-11-06 09:22:51,351:INFO:Uploading model into container now
+2025-11-06 09:22:51,351:INFO:_master_model_container: 2
+2025-11-06 09:22:51,351:INFO:_display_container: 2
+2025-11-06 09:22:51,352:INFO:GaussianNB(priors=None, var_smoothing=1e-09)
+2025-11-06 09:22:51,352:INFO:create_model() successfully completed......................................
+2025-11-06 09:22:51,410:INFO:SubProcess create_model() end ==================================
+2025-11-06 09:22:51,410:INFO:Creating metrics dataframe
+2025-11-06 09:22:51,412:INFO:Initializing Decision Tree Classifier
+2025-11-06 09:22:51,412:INFO:Total runtime is 0.09461848338445028 minutes
+2025-11-06 09:22:51,412:INFO:SubProcess create_model() called ==================================
+2025-11-06 09:22:51,412:INFO:Initializing create_model()
+2025-11-06 09:22:51,412:INFO:create_model(self=<pycaret.classification.oop.ClassificationExperiment object at 0x13b4809d0>, estimator=dt, fold=StratifiedKFold(n_splits=10, random_state=None, shuffle=False), round=4, cross_validation=True, predict=True, fit_kwargs={}, groups=None, refit=False, probability_threshold=None, experiment_custom_tags=None, verbose=False, system=False, add_to_model_list=True, metrics=None, display=<pycaret.internal.display.display.CommonDisplay object at 0x13b375820>, model_only=True, return_train_score=False, error_score=0.0, kwargs={})
+2025-11-06 09:22:51,412:INFO:Checking exceptions
+2025-11-06 09:22:51,412:INFO:Importing libraries
+2025-11-06 09:22:51,412:INFO:Copying training dataset
+2025-11-06 09:22:51,414:INFO:Defining folds
+2025-11-06 09:22:51,414:INFO:Declaring metric variables
+2025-11-06 09:22:51,414:INFO:Importing untrained model
+2025-11-06 09:22:51,414:INFO:Decision Tree Classifier Imported successfully
+2025-11-06 09:22:51,414:INFO:Starting cross validation
+2025-11-06 09:22:51,415:INFO:Cross validating with StratifiedKFold(n_splits=10, random_state=None, shuffle=False), n_jobs=-1
+2025-11-06 09:22:51,481:INFO:Calculating mean and std
+2025-11-06 09:22:51,481:INFO:Creating metrics dataframe
+2025-11-06 09:22:51,482:INFO:Uploading results into container
+2025-11-06 09:22:51,483:INFO:Uploading model into container now
+2025-11-06 09:22:51,483:INFO:_master_model_container: 3
+2025-11-06 09:22:51,483:INFO:_display_container: 2
+2025-11-06 09:22:51,484:INFO:DecisionTreeClassifier(ccp_alpha=0.0, class_weight=None, criterion='gini',
+                       max_depth=None, max_features=None, max_leaf_nodes=None,
+                       min_impurity_decrease=0.0, min_samples_leaf=1,
+                       min_samples_split=2, min_weight_fraction_leaf=0.0,
+                       monotonic_cst=None, random_state=123, splitter='best')
+2025-11-06 09:22:51,484:INFO:create_model() successfully completed......................................
+2025-11-06 09:22:51,532:INFO:SubProcess create_model() end ==================================
+2025-11-06 09:22:51,532:INFO:Creating metrics dataframe
+2025-11-06 09:22:51,534:INFO:Initializing SVM - Linear Kernel
+2025-11-06 09:22:51,534:INFO:Total runtime is 0.09665938615798951 minutes
+2025-11-06 09:22:51,534:INFO:SubProcess create_model() called ==================================
+2025-11-06 09:22:51,534:INFO:Initializing create_model()
+2025-11-06 09:22:51,534:INFO:create_model(self=<pycaret.classification.oop.ClassificationExperiment object at 0x13b4809d0>, estimator=svm, fold=StratifiedKFold(n_splits=10, random_state=None, shuffle=False), round=4, cross_validation=True, predict=True, fit_kwargs={}, groups=None, refit=False, probability_threshold=None, experiment_custom_tags=None, verbose=False, system=False, add_to_model_list=True, metrics=None, display=<pycaret.internal.display.display.CommonDisplay object at 0x13b375820>, model_only=True, return_train_score=False, error_score=0.0, kwargs={})
+2025-11-06 09:22:51,534:INFO:Checking exceptions
+2025-11-06 09:22:51,534:INFO:Importing libraries
+2025-11-06 09:22:51,534:INFO:Copying training dataset
+2025-11-06 09:22:51,537:INFO:Defining folds
+2025-11-06 09:22:51,537:INFO:Declaring metric variables
+2025-11-06 09:22:51,537:INFO:Importing untrained model
+2025-11-06 09:22:51,537:INFO:SVM - Linear Kernel Imported successfully
+2025-11-06 09:22:51,537:INFO:Starting cross validation
+2025-11-06 09:22:51,537:INFO:Cross validating with StratifiedKFold(n_splits=10, random_state=None, shuffle=False), n_jobs=-1
+2025-11-06 09:22:51,593:INFO:Calculating mean and std
+2025-11-06 09:22:51,594:INFO:Creating metrics dataframe
+2025-11-06 09:22:51,595:INFO:Uploading results into container
+2025-11-06 09:22:51,595:INFO:Uploading model into container now
+2025-11-06 09:22:51,596:INFO:_master_model_container: 4
+2025-11-06 09:22:51,596:INFO:_display_container: 2
+2025-11-06 09:22:51,596:INFO:SGDClassifier(alpha=0.0001, average=False, class_weight=None,
+              early_stopping=False, epsilon=0.1, eta0=0.001, fit_intercept=True,
+              l1_ratio=0.15, learning_rate='optimal', loss='hinge',
+              max_iter=1000, n_iter_no_change=5, n_jobs=-1, penalty='l2',
+              power_t=0.5, random_state=123, shuffle=True, tol=0.001,
+              validation_fraction=0.1, verbose=0, warm_start=False)
+2025-11-06 09:22:51,596:INFO:create_model() successfully completed......................................
+2025-11-06 09:22:51,646:INFO:SubProcess create_model() end ==================================
+2025-11-06 09:22:51,646:INFO:Creating metrics dataframe
+2025-11-06 09:22:51,647:INFO:Initializing Ridge Classifier
+2025-11-06 09:22:51,647:INFO:Total runtime is 0.09854564666748047 minutes
+2025-11-06 09:22:51,647:INFO:SubProcess create_model() called ==================================
+2025-11-06 09:22:51,648:INFO:Initializing create_model()
+2025-11-06 09:22:51,648:INFO:create_model(self=<pycaret.classification.oop.ClassificationExperiment object at 0x13b4809d0>, estimator=ridge, fold=StratifiedKFold(n_splits=10, random_state=None, shuffle=False), round=4, cross_validation=True, predict=True, fit_kwargs={}, groups=None, refit=False, probability_threshold=None, experiment_custom_tags=None, verbose=False, system=False, add_to_model_list=True, metrics=None, display=<pycaret.internal.display.display.CommonDisplay object at 0x13b375820>, model_only=True, return_train_score=False, error_score=0.0, kwargs={})
+2025-11-06 09:22:51,648:INFO:Checking exceptions
+2025-11-06 09:22:51,648:INFO:Importing libraries
+2025-11-06 09:22:51,648:INFO:Copying training dataset
+2025-11-06 09:22:51,650:INFO:Defining folds
+2025-11-06 09:22:51,650:INFO:Declaring metric variables
+2025-11-06 09:22:51,650:INFO:Importing untrained model
+2025-11-06 09:22:51,650:INFO:Ridge Classifier Imported successfully
+2025-11-06 09:22:51,650:INFO:Starting cross validation
+2025-11-06 09:22:51,651:INFO:Cross validating with StratifiedKFold(n_splits=10, random_state=None, shuffle=False), n_jobs=-1
+2025-11-06 09:22:51,703:INFO:Calculating mean and std
+2025-11-06 09:22:51,704:INFO:Creating metrics dataframe
+2025-11-06 09:22:51,705:INFO:Uploading results into container
+2025-11-06 09:22:51,705:INFO:Uploading model into container now
+2025-11-06 09:22:51,706:INFO:_master_model_container: 5
+2025-11-06 09:22:51,706:INFO:_display_container: 2
+2025-11-06 09:22:51,706:INFO:RidgeClassifier(alpha=1.0, class_weight=None, copy_X=True, fit_intercept=True,
+                max_iter=None, positive=False, random_state=123, solver='auto',
+                tol=0.0001)
+2025-11-06 09:22:51,706:INFO:create_model() successfully completed......................................
+2025-11-06 09:22:51,752:INFO:SubProcess create_model() end ==================================
+2025-11-06 09:22:51,752:INFO:Creating metrics dataframe
+2025-11-06 09:22:51,754:INFO:Initializing create_model()
+2025-11-06 09:22:51,754:INFO:create_model(self=<pycaret.classification.oop.ClassificationExperiment object at 0x13b4809d0>, estimator=GaussianNB(priors=None, var_smoothing=1e-09), fold=StratifiedKFold(n_splits=10, random_state=None, shuffle=False), round=4, cross_validation=False, predict=False, fit_kwargs={}, groups=None, refit=True, probability_threshold=None, experiment_custom_tags=None, verbose=False, system=False, add_to_model_list=True, metrics=None, display=None, model_only=True, return_train_score=False, error_score=0.0, kwargs={})
+2025-11-06 09:22:51,754:INFO:Checking exceptions
+2025-11-06 09:22:51,755:INFO:Importing libraries
+2025-11-06 09:22:51,755:INFO:Copying training dataset
+2025-11-06 09:22:51,757:INFO:Defining folds
+2025-11-06 09:22:51,757:INFO:Declaring metric variables
+2025-11-06 09:22:51,757:INFO:Importing untrained model
+2025-11-06 09:22:51,757:INFO:Declaring custom model
+2025-11-06 09:22:51,757:INFO:Naive Bayes Imported successfully
+2025-11-06 09:22:51,757:INFO:Cross validation set to False
+2025-11-06 09:22:51,757:INFO:Fitting Model
+2025-11-06 09:22:51,763:INFO:GaussianNB(priors=None, var_smoothing=1e-09)
+2025-11-06 09:22:51,763:INFO:create_model() successfully completed......................................
+2025-11-06 09:22:51,818:INFO:_master_model_container: 5
+2025-11-06 09:22:51,818:INFO:_display_container: 2
+2025-11-06 09:22:51,818:INFO:GaussianNB(priors=None, var_smoothing=1e-09)
+2025-11-06 09:22:51,818:INFO:compare_models() successfully completed......................................
+2025-11-06 09:23:03,622:INFO:Initializing get_config()
+2025-11-06 09:23:03,622:INFO:get_config(self=<pycaret.classification.oop.ClassificationExperiment object at 0x13b4809d0>, variable=X_train_transformed)
+2025-11-06 09:23:03,638:INFO:Variable: X_train returned as      doppler_speed  doppler_range  doppler_energy  mic_rms_mean  \
+101       0.572271       0.165000       -0.267549     -0.058464   
+499       1.197818      -0.565343       -0.235280      1.740429   
+197       0.560356      -0.828925        0.722240     -0.058464   
+56        0.822490      -1.174877       -0.181211      0.391259   
+386      -1.268624       1.521350       -0.265340     -0.283326   
+..             ...            ...             ...           ...   
+20        0.185028      -0.537886        0.200635      0.391259   
+0         0.971430      -1.630655       -0.270046     -0.058464   
+183       1.173988       0.379160       -0.163516     -0.058464   
+60        1.162073      -1.004647       -0.023397     -0.508187   
+156       1.179946      -0.191935       -0.195400      0.616121   
+
+     mic_peak_mean  mic_rms_samples_mean  mic_rms_samples_std  \
+101      -0.295023             -0.190403             0.322971   
+499       2.573593              1.788391            -0.095823   
+197      -0.254523             -0.055485            -0.352739   
+56        0.531315              0.371755             1.152782   
+386      -0.499915             -0.257862            -0.190468   
+..             ...                   ...                  ...   
+20        0.743245              0.349268            -0.601954   
+0        -0.333665              0.034460             0.903100   
+183      -0.069417             -0.032999            -0.265106   
+60       -0.552499             -0.595156            -0.969905   
+156       1.000189              0.731535            -0.747638   
+
+     mic_rms_samples_min  mic_rms_samples_max  thermal_mean  thermal_std  \
+101            -0.058992             0.291363      0.905641     0.080686   
+499             1.828740             0.838523     -0.079571    -0.491430   
+197            -0.058992            -0.119007      3.248847     2.903559   
+56             -0.373614             0.838523     -1.277802     0.105707   
+386            -0.373614            -0.666167     -0.851765     0.019047   
+..                   ...                  ...           ...          ...   
+20              0.570252            -0.255797      1.092032     1.798466   
+0              -0.373614             0.838523      0.559485    -0.857338   
+183            -0.058992            -0.392587      1.766591     0.127807   
+60             -0.058992            -0.939747      1.447063     4.435022   
+156             1.199496            -0.119007     -0.026317    -0.020843   
+
+     thermal_min  thermal_max  thermal_centroid_y  thermal_centroid_x  \
+101     0.414803     0.454642            0.098522            0.401558   
+499     0.026229     0.202414           -1.214381           -0.180108   
+197     2.357677     3.229158            2.523241            4.426982   
+56     -1.139495    -0.806501           -0.410239            0.856109   
+386    -1.139495    -0.302044           -0.201268            0.110466   
+..           ...          ...                 ...                 ...   
+20      0.803378     1.463557            2.471061            0.626110   
+0       1.580527    -0.049815            1.548987           -0.654420   
+183     1.191953     1.463557           -0.268208           -0.410766   
+60     -0.750921     1.715786            0.141447            3.700293   
+156    -0.750921     0.202414           -0.513651            0.432674   
+
+     thermal_vertical_diff  thermal_horizontal_diff  
+101              -0.179567                -0.464310  
+499               1.591045                 0.226180  
+197              -3.119450                -2.801353  
+56                0.154511                -0.605949  
+386              -0.112751                -0.074803  
+..                     ...                      ...  
+20               -2.885595                -0.836113  
+0                -0.212974                 0.721916  
+183              -0.146159                -0.198737  
+60               -2.083809                -4.979053  
+156              -0.079343                -0.836113  
+
+[400 rows x 17 columns]
+2025-11-06 09:23:03,638:INFO:get_config() successfully completed......................................
+2025-11-06 09:23:03,638:INFO:Initializing get_config()
+2025-11-06 09:23:03,638:INFO:get_config(self=<pycaret.classification.oop.ClassificationExperiment object at 0x13b4809d0>, variable=y_train)
+2025-11-06 09:23:03,638:INFO:Variable: 'y_train' used to return the transformed values in PyCaret 2.x. From PyCaret 3.x, this will return the raw values. If you need the transformed values, call get_config with 'y_train_transformed' instead.
+2025-11-06 09:23:03,639:INFO:Variable:  returned as 101    0
+499    1
+197    0
+56     0
+386    1
+      ..
+20     0
+0      0
+183    0
+60     0
+156    0
+Name: label, Length: 400, dtype: int8
+2025-11-06 09:23:03,639:INFO:get_config() successfully completed......................................
+2025-11-06 09:23:03,639:INFO:Initializing get_config()
+2025-11-06 09:23:03,639:INFO:get_config(self=<pycaret.classification.oop.ClassificationExperiment object at 0x13b4809d0>, variable=X_test_transformed)
+2025-11-06 09:23:03,651:INFO:Variable: X_test returned as      doppler_speed  doppler_range  doppler_energy  mic_rms_mean  \
+73        0.554399       0.988694       -0.265964     -0.058464   
+460      -1.268624       0.346213       -0.265772      0.166398   
+113       1.650595       0.318756       -0.252279     -0.508187   
+356      -1.262667       1.686089       -0.266588     -0.508187   
+497       0.155240      -0.115056       -0.267044     -0.283326   
+..             ...            ...             ...           ...   
+230      -0.887338      -0.290778       -0.265412     -0.283326   
+57        0.870151      -1.257246       -0.159026     -0.058464   
+358      -1.250752       1.570772       -0.264644     -0.283326   
+459      -1.220964       0.527425       -0.263779     -0.508187   
+195       0.423332      -0.691643        8.548258     -0.058464   
+
+     mic_peak_mean  mic_rms_samples_mean  mic_rms_samples_std  \
+73        0.863949             -0.122944             0.250878   
+460      -0.056404              0.124405            -0.258428   
+113      -0.492877             -0.392779             0.545714   
+356      -0.638147             -0.482724            -0.829629   
+497      -0.076056             -0.190403            -0.868627   
+..             ...                   ...                  ...   
+230       1.061139             -0.370293             0.678118   
+57       -0.342030             -0.122944             0.293180   
+358      -0.209242             -0.167916             0.871118   
+459      -0.493143             -0.460238            -0.462542   
+195       0.104402             -0.145430            -0.934786   
+
+     mic_rms_samples_min  mic_rms_samples_max  thermal_mean  thermal_std  \
+73             -0.058992             0.428153      0.523982    -0.781449   
+460             0.255630             0.017783     -0.612118    -0.542630   
+113            -0.373614             0.017783      0.719249     1.383115   
+356            -0.373614            -0.802957     -0.620994    -0.400333   
+497             0.255630            -0.529377     -0.328093    -0.436919   
+..                   ...                  ...           ...          ...   
+230            -0.373614             0.154573      0.009186    -1.173448   
+57             -0.373614             0.017783     -0.816261    -0.080862   
+358            -0.373614             0.428153     -0.452354    -0.446703   
+459            -0.058992            -0.255797     -0.700876    -0.451730   
+195             0.570252            -0.529377      4.269562     3.107293   
+
+     thermal_min  thermal_max  thermal_centroid_y  thermal_centroid_x  \
+73      1.191953     0.202414            1.800481           -0.607728   
+460    -0.362346    -0.806501           -1.667761           -0.572628   
+113    -0.362346     1.211328           -0.270962           -1.160044   
+356    -0.750921    -0.806501           -0.649893            0.002164   
+497    -0.362346    -0.554273           -1.551707           -0.484464   
+..           ...          ...                 ...                 ...   
+230     0.803378    -0.302044           -0.321273           -0.884568   
+57     -0.750921    -0.806501           -0.390263            0.652690   
+358    -0.750921    -0.554273           -0.841924            0.258335   
+459    -0.362346    -1.058730           -1.651361           -0.038114   
+195     3.134826     3.481387            1.998116            3.156451   
+
+     thermal_vertical_diff  thermal_horizontal_diff  
+73               -0.814314                 0.651097  
+460               1.657860                 0.615687  
+113              -0.346606                 1.111423  
+356               0.288142                -0.003984  
+497               1.724676                 0.580277  
+..                     ...                      ...  
+230               0.856074                 0.757326  
+57                0.020880                -0.535130  
+358               0.722443                -0.234147  
+459               1.724676                 0.261589  
+195              -1.816547                -2.571190  
+
+[100 rows x 17 columns]
+2025-11-06 09:23:03,652:INFO:get_config() successfully completed......................................
+2025-11-06 09:23:03,652:INFO:Initializing get_config()
+2025-11-06 09:23:03,652:INFO:get_config(self=<pycaret.classification.oop.ClassificationExperiment object at 0x13b4809d0>, variable=y_test)
+2025-11-06 09:23:03,652:INFO:Variable: 'y_test' used to return the transformed values in PyCaret 2.x. From PyCaret 3.x, this will return the raw values. If you need the transformed values, call get_config with 'y_test_transformed' instead.
+2025-11-06 09:23:03,652:INFO:Variable:  returned as 73     0
+460    1
+113    0
+356    1
+497    1
+      ..
+230    0
+57     0
+358    1
+459    1
+195    0
+Name: label, Length: 100, dtype: int8
+2025-11-06 09:23:03,652:INFO:get_config() successfully completed......................................
+2025-11-06 09:23:07,707:INFO:Initializing get_config()
+2025-11-06 09:23:07,707:INFO:get_config(self=<pycaret.classification.oop.ClassificationExperiment object at 0x13b4809d0>, variable=X_train_transformed)
+2025-11-06 09:23:07,725:INFO:Variable: X_train returned as      doppler_speed  doppler_range  doppler_energy  mic_rms_mean  \
+101       0.572271       0.165000       -0.267549     -0.058464   
+499       1.197818      -0.565343       -0.235280      1.740429   
+197       0.560356      -0.828925        0.722240     -0.058464   
+56        0.822490      -1.174877       -0.181211      0.391259   
+386      -1.268624       1.521350       -0.265340     -0.283326   
+..             ...            ...             ...           ...   
+20        0.185028      -0.537886        0.200635      0.391259   
+0         0.971430      -1.630655       -0.270046     -0.058464   
+183       1.173988       0.379160       -0.163516     -0.058464   
+60        1.162073      -1.004647       -0.023397     -0.508187   
+156       1.179946      -0.191935       -0.195400      0.616121   
+
+     mic_peak_mean  mic_rms_samples_mean  mic_rms_samples_std  \
+101      -0.295023             -0.190403             0.322971   
+499       2.573593              1.788391            -0.095823   
+197      -0.254523             -0.055485            -0.352739   
+56        0.531315              0.371755             1.152782   
+386      -0.499915             -0.257862            -0.190468   
+..             ...                   ...                  ...   
+20        0.743245              0.349268            -0.601954   
+0        -0.333665              0.034460             0.903100   
+183      -0.069417             -0.032999            -0.265106   
+60       -0.552499             -0.595156            -0.969905   
+156       1.000189              0.731535            -0.747638   
+
+     mic_rms_samples_min  mic_rms_samples_max  thermal_mean  thermal_std  \
+101            -0.058992             0.291363      0.905641     0.080686   
+499             1.828740             0.838523     -0.079571    -0.491430   
+197            -0.058992            -0.119007      3.248847     2.903559   
+56             -0.373614             0.838523     -1.277802     0.105707   
+386            -0.373614            -0.666167     -0.851765     0.019047   
+..                   ...                  ...           ...          ...   
+20              0.570252            -0.255797      1.092032     1.798466   
+0              -0.373614             0.838523      0.559485    -0.857338   
+183            -0.058992            -0.392587      1.766591     0.127807   
+60             -0.058992            -0.939747      1.447063     4.435022   
+156             1.199496            -0.119007     -0.026317    -0.020843   
+
+     thermal_min  thermal_max  thermal_centroid_y  thermal_centroid_x  \
+101     0.414803     0.454642            0.098522            0.401558   
+499     0.026229     0.202414           -1.214381           -0.180108   
+197     2.357677     3.229158            2.523241            4.426982   
+56     -1.139495    -0.806501           -0.410239            0.856109   
+386    -1.139495    -0.302044           -0.201268            0.110466   
+..           ...          ...                 ...                 ...   
+20      0.803378     1.463557            2.471061            0.626110   
+0       1.580527    -0.049815            1.548987           -0.654420   
+183     1.191953     1.463557           -0.268208           -0.410766   
+60     -0.750921     1.715786            0.141447            3.700293   
+156    -0.750921     0.202414           -0.513651            0.432674   
+
+     thermal_vertical_diff  thermal_horizontal_diff  
+101              -0.179567                -0.464310  
+499               1.591045                 0.226180  
+197              -3.119450                -2.801353  
+56                0.154511                -0.605949  
+386              -0.112751                -0.074803  
+..                     ...                      ...  
+20               -2.885595                -0.836113  
+0                -0.212974                 0.721916  
+183              -0.146159                -0.198737  
+60               -2.083809                -4.979053  
+156              -0.079343                -0.836113  
+
+[400 rows x 17 columns]
+2025-11-06 09:23:07,726:INFO:get_config() successfully completed......................................
