@@ -16,7 +16,8 @@ public:
                         uint8_t rightAddr = 0x69,
                         uint8_t centerAddr = 0x69,
                         TwoWire &wireLeft = Wire,
-                        TwoWire &wireRight = Wire1);
+                        TwoWire &wireRight = Wire1,
+                        bool debug = false);
 
     // Initialize sensors with I2C pins and frequency
     bool begin(uint8_t sda0, uint8_t scl0,
@@ -50,6 +51,8 @@ private:
     float _rotatedLeft[64];
     float _rotatedRight[64];
     float _rotatedCenter[64];
+
+    bool _debug;
 
     void rotate270CW(float* src, float* dst);
 };

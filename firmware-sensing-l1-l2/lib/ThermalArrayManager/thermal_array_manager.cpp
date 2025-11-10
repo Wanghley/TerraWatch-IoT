@@ -4,26 +4,47 @@ ThermalArrayManager::ThermalArrayManager(uint8_t leftAddr,
                                          uint8_t rightAddr,
                                          uint8_t centerAddr,
                                          TwoWire &wireLeft,
-                                         TwoWire &wireRight)
+                                         TwoWire &wireRight,
+                                         bool debug)
     : _amgLeft(), _amgRight(), _amgCenter(),
-      _wireLeft(&wireLeft), _wireRight(&wireRight)
+      _wireLeft(&wireLeft), _wireRight(&wireRight),
+      _debug(debug)
 { }
 
 bool ThermalArrayManager::begin(uint8_t sda0, uint8_t scl0,
                                 uint8_t sda1, uint8_t scl1,
                                 uint32_t freq) {
+
+    if (_debug) {
+        Serial.println("THERMAL: Initializing ThermalArrayManager...");
+    }
     _wireLeft->begin(sda0, scl0, freq);
     _wireRight->begin(sda1, scl1, freq);
 
     bool status;
     status = _amgLeft.begin(0x68, _wireLeft);
-    if (!status) { Serial.println("LEFT sensor not found!"); return false; }
+    if (!status) {
+        if (_debug) {
+            Serial.println("THERMAL: LEFT sensor not found!");
+        }
+        return false;
+    }
 
     status = _amgRight.begin(0x69, _wireLeft);
-    if (!status) { Serial.println("RIGHT sensor not found!"); return false; }
+    if (!status) { 
+        if (_debug) {
+            Serial.println("THERMAL: RIGHT sensor not found!");
+        }
+        return false;
+    }
 
     status = _amgCenter.begin(0x69, _wireRight);
-    if (!status) { Serial.println("CENTER sensor not found!"); return false; }
+    if (!status) { 
+        if (_debug) {
+            Serial.println("THERMAL: CENTER sensor not found!");
+        }
+        return false;
+    }
 
     return true;
 }
