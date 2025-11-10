@@ -16,13 +16,14 @@ struct RadarData {
 class mmWaveArrayManager {
 public:
     mmWaveArrayManager(uint8_t radar1RX, uint8_t radar1TX,
-                       uint8_t radar2RX, uint8_t radar2TX);
+                       uint8_t radar2RX, uint8_t radar2TX,
+                       bool debug = false);
 
-    bool begin();                     // Initialize both radars
+    bool begin();                     // Initialize both radars with debug info
     void update();                     // Read and update radar data
-    RadarData getRadar1();             // Return radar1 data object
-    RadarData getRadar2();             // Return radar2 data object
-    String getJSON();                  // Return both radars as JSON string
+    RadarData getRadar1();
+    RadarData getRadar2();
+    String getJSON();
 
 private:
     HardwareSerial _serial1;
@@ -31,6 +32,8 @@ private:
     DFRobot_C4001_UART _radar2;
     RadarData _radar1Data;
     RadarData _radar2Data;
+
+    bool _debug;
 
     bool beginRadarWithTimeout(DFRobot_C4001_UART &radar, const char* name, unsigned long timeout = 5000);
     bool configureRadar(DFRobot_C4001_UART &radar);
