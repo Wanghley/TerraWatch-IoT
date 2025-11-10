@@ -1,39 +1,66 @@
 #include "mmWave_array_manager.h"
 
 mmWaveArrayManager::mmWaveArrayManager(uint8_t radar1RX, uint8_t radar1TX,
-                                       uint8_t radar2RX, uint8_t radar2TX)
+                                       uint8_t radar2RX, uint8_t radar2TX,
+                                       bool debug)
     : _serial1(1), _serial2(2),
-      _radar1(&_serial1, 9600), _radar2(&_serial2, 9600)
+      _radar1(&_serial1, 9600), _radar2(&_serial2, 9600),
+      _debug(debug)
 {
     _radar1Data = {"R1", 0, 0, 0, 0, 0, false};
     _radar2Data = {"R2", 0, 0, 0, 0, 0, false};
 
     _serial1.begin(9600, SERIAL_8N1, radar1RX, radar1TX);
     _serial2.begin(9600, SERIAL_8N1, radar2RX, radar2TX);
+
+    if (_debug) {
+        Serial.println("[mmWaveArrayManager] Serial ports initialized");
+    }
 }
 
 bool mmWaveArrayManager::beginRadarWithTimeout(DFRobot_C4001_UART &radar, const char* name, unsigned long timeout) {
     unsigned long start = millis();
     while (!radar.begin()) {
-        if (millis() - start > timeout) return false;
+        if (_debug) {
+            Serial.printf("[mmWave] Waiting for %s to initialize...\n", name);
+        }
+        if (millis() - start > timeout) {
+            if (_debug) {
+                Serial.printf("[mmWave] %s initialization timed out!\n", name);
+            }
+            return false;
+        }
         delay(200);
+    }
+    if (_debug) {
+        Serial.printf("[mmWave] %s initialized successfully!\n", name);
     }
     return true;
 }
 
 bool mmWaveArrayManager::configureRadar(DFRobot_C4001_UART &radar) {
+    if (_debug) Serial.println("[mmWave] Configuring radar...");
+
     if (!radar.setSensorMode(eSpeedMode)) return false;
     if (!radar.setDetectThres(MIN_RANGE, MAX_RANGE, TRIG_RANGE)) return false;
     if (!radar.setKeepSensitivity(KEEP_SENSITIVITY)) return false;
     if (!radar.setTrigSensitivity(TRIG_SENSITIVITY)) return false;
     radar.setFrettingDetection(eON);
+
+    if (_debug) Serial.println("[mmWave] Radar configured successfully!");
     return true;
 }
 
 bool mmWaveArrayManager::begin() {
-    if (!beginRadarWithTimeout(_radar1, "R1") || !configureRadar(_radar1)) return false;
-    if (!beginRadarWithTimeout(_radar2, "R2") || !configureRadar(_radar2)) return false;
-    return true;
+    bool ok1 = beginRadarWithTimeout(_radar1, "R1") && configureRadar(_radar1);
+    bool ok2 = beginRadarWithTimeout(_radar2, "R2") && configureRadar(_radar2);
+
+    if (_debug) {
+        Serial.printf("[mmWave] Radar1 status: %s\n", ok1 ? "OK" : "FAILED");
+        Serial.printf("[mmWave] Radar2 status: %s\n", ok2 ? "OK" : "FAILED");
+    }
+
+    return ok1 && ok2;
 }
 
 void mmWaveArrayManager::updateRadarData(DFRobot_C4001_UART &radar, RadarData &data) {
