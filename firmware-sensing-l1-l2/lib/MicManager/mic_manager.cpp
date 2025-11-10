@@ -1,12 +1,14 @@
 #include "mic_manager.h"
 
-MicManager::MicManager(double smoothingAlpha)
-    : prevL(0), prevR(0), alpha(smoothingAlpha) {}
+MicManager::MicManager(double smoothingAlpha, bool debug)
+    : _debug(debug), prevL(0), prevR(0), alpha(smoothingAlpha) {}
 
 void MicManager::begin() {
     Serial.begin(115200);
     delay(300);
-    Serial.println("Stereo INMP441 Test");
+    if (_debug) {
+        Serial.println("Initializing I2S...");
+    }
 
     i2s_config_t cfg = makeI2SConfig();
     i2s_pin_config_t pins = makeI2SPins();
@@ -15,10 +17,15 @@ void MicManager::begin() {
     i2s_set_pin(I2S_PORT, &pins);
     i2s_start(I2S_PORT);
 
-    Serial.println("I2S initialized in stereo mode.");
+    if (_debug) {
+        Serial.println("I2S initialized.");
+    }
 }
 
 bool MicManager::read(double &left, double &right) {
+    if (_debug) {
+        Serial.println("MIC: Reading audio data...");
+    }
     size_t bytesRead = 0;
     esp_err_t res = i2s_read(I2S_PORT, i2sBuffer, SAMPLE_COUNT * 2 * sizeof(int32_t), &bytesRead, pdMS_TO_TICKS(50));
     if (res != ESP_OK || bytesRead == 0) return false;
@@ -26,9 +33,16 @@ bool MicManager::read(double &left, double &right) {
     double rmsL, rmsR;
     computeStereoRMS(rmsL, rmsR, i2sBuffer, SAMPLE_COUNT);
 
+    if (_debug) {
+        Serial.printf("MIC: Raw RMS L: %.5f, R: %.5f\n", rmsL, rmsR);
+    }
     // Low-pass filter for smoother output
     prevL = alpha * rmsL + (1 - alpha) * prevL;
     prevR = alpha * rmsR + (1 - alpha) * prevR;
+
+    if (_debug) {
+        Serial.printf("MIC: Smoothed RMS L: %.5f, R: %.5f\n", prevL, prevR);
+    }
 
     left = prevL;
     right = prevR;
@@ -68,8 +82,17 @@ i2s_pin_config_t MicManager::makeI2SPins() {
 }
 
 void MicManager::computeStereoRMS(double &leftRMS, double &rightRMS, int32_t *buf, size_t len) {
+
+    if (_debug) {
+        Serial.println("MIC: Computing RMS...");
+    }
+
     size_t samples = len * 2; // stereo interleaved
     double sumL = 0, sumR = 0;
+
+    if (_debug) {
+        Serial.printf("MIC: Total samples to process: %d\n", samples);
+    }
 
     for (size_t i = 0; i < samples; i += 2) {
         int32_t vL = buf[i] >> 8;
@@ -79,6 +102,10 @@ void MicManager::computeStereoRMS(double &leftRMS, double &rightRMS, int32_t *bu
 
         sumL += double(vL) * double(vL);
         sumR += double(vR) * double(vR);
+    }
+
+    if (_debug) {
+        Serial.println("MIC: RMS computation done.");
     }
 
     leftRMS  = sqrt(sumL / len) / ((1 << 23) - 1);

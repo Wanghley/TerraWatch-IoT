@@ -8,7 +8,8 @@
 class MicManager {
 public:
     // Constructor with optional smoothing alpha
-    MicManager(double smoothingAlpha = 0.2);
+    MicManager(double smoothingAlpha = 0.2,
+                       bool debug = false);
 
     // Initialize I2S driver
     void begin();
@@ -36,6 +37,9 @@ private:
     double prevL;
     double prevR;
     double alpha;
+
+    // Debug flag
+    bool _debug;
 
     // I2S pins
     static const int I2S_SCK = 5;
