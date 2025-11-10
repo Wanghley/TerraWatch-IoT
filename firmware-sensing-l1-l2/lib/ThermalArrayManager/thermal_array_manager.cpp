@@ -50,6 +50,9 @@ bool ThermalArrayManager::begin(uint8_t sda0, uint8_t scl0,
 }
 
 void ThermalArrayManager::readRaw() {
+    if (_debug) {
+        Serial.println("THERMAL: Reading raw pixel data...");
+    }
     _amgLeft.readPixels(_pixelsLeft);
     _amgRight.readPixels(_pixelsRight);
     _amgCenter.readPixels(_pixelsCenter);
@@ -57,12 +60,18 @@ void ThermalArrayManager::readRaw() {
 
 void ThermalArrayManager::readRotated() {
     readRaw();
+    if (_debug) {
+        Serial.println("THERMAL: Rotating pixel data 270° clockwise...");
+    }
     rotate270CW(_pixelsLeft, _rotatedLeft);
     rotate270CW(_pixelsCenter, _rotatedCenter);
     rotate270CW(_pixelsRight, _rotatedRight);
 }
 
 ThermalReadings ThermalArrayManager::getObject() {
+    if (_debug) {
+        Serial.println("THERMAL: Getting pixel data as object...");
+    }
     ThermalReadings r;
     memcpy(r.left, _rotatedLeft, sizeof(_rotatedLeft));
     memcpy(r.center, _rotatedCenter, sizeof(_rotatedCenter));
@@ -71,6 +80,9 @@ ThermalReadings ThermalArrayManager::getObject() {
 }
 
 String ThermalArrayManager::getJSON() {
+    if (_debug) {
+        Serial.println("THERMAL: Getting pixel data as JSON...");
+    }
     StaticJsonDocument<1024> doc;
     JsonArray left = doc.createNestedArray("left");
     JsonArray center = doc.createNestedArray("center");
@@ -88,6 +100,9 @@ String ThermalArrayManager::getJSON() {
 }
 
 void ThermalArrayManager::rotate270CW(float* src, float* dst) {
+    if (_debug) {
+        Serial.println("THERMAL: Rotating 270° clockwise...");
+    }
     for (int r = 0; r < 8; r++) {
         for (int c = 0; c < 8; c++) {
             dst[c * 8 + (7 - r)] = src[r * 8 + c];
