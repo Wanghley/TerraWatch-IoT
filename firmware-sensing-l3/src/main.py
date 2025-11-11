@@ -24,7 +24,7 @@ import cnn
 GPIO_INPUT_PIN = 2  # wiringPi pin 2 (BCM GPIO 27, physical pin 13)
 GPIO_OUTPUT_PIN = 3  # wiringPi pin 3 (BCM GPIO 22, physical pin 15) - output for animal detection
 PULSE_TIMEOUT_MS = 80  # Timeout for detecting second rising edge (ms)
-DEBOUNCE_TIME = 0.010  # Minimum seconds between triggers
+DEBOUNCE_TIME = 0.02  # Minimum seconds between triggers
 
 # Path to CNN script
 SCRIPT_DIR = Path(__file__).parent
@@ -110,7 +110,7 @@ def capture_frame_only():
         return False
 
 
-def trigger_gpio_output(duration_ms=20):
+def trigger_gpio_output(duration_ms=100):
     """Set GPIO_OUTPUT_PIN HIGH for specified duration in milliseconds."""
     try:
         wiringpi.digitalWrite(GPIO_OUTPUT_PIN, wiringpi.HIGH)
@@ -157,8 +157,8 @@ def trigger_cnn():
         
         if animal_detected:
             print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Animal Detected")
-            # Trigger GPIO output pin HIGH for 20ms
-            trigger_gpio_output(20)
+            # Trigger GPIO output pin HIGH for 100ms
+            trigger_gpio_output(100)
         
         print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] CNN inference completed")
         return animal_detected
