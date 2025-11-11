@@ -5,7 +5,7 @@
 class WifiManager {
 public:
     // Constructor: Takes SSID and password when created
-    WifiManager(const char* ssid, const char* password, bool debug = false);
+    WifiManager(const char* ssid, const char* password, bool debug = false, IPAddress staticIP = IPAddress(0,0,0,0));
 
     // Main connection function (blocking)
     void connect();
@@ -19,10 +19,17 @@ public:
     // Reconnect to Wi-Fi
     void reconnect();
 
+    // Trigger to send request to deterrence system wifi client
+    bool triggerDeterrenceSystem(float probability = 1.0, float threshold = 0.5, const char* modelVersion = "1.0", const char* deviceID = "AGRONAUTS_L1_L2");
+
 private:
     const char* _ssid;
     const char* _password;
     bool _debug;
+
+    // create wifi client
+    WiFiClient _wifiClient;
+    IPAddress _ipAddress;
 
     // This is the static event handler required by the ESP-IDF
     static void handleWiFiEvent(WiFiEvent_t event);

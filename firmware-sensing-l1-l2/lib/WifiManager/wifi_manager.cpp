@@ -5,8 +5,8 @@
 volatile bool WifiManager::_wifiConnected = false;
 static WifiManager* instancePtr = nullptr;
 
-WifiManager::WifiManager(const char* ssid, const char* password, bool debug)
-  : _ssid(ssid), _password(password), _debug(debug) {
+WifiManager::WifiManager(const char* ssid, const char* password, bool debug, IPAddress staticIP)
+  : _ssid(ssid), _password(password), _debug(debug), _ipAddress(staticIP) {
     instancePtr = this; // store pointer for static handler
 }
 
@@ -90,3 +90,49 @@ void WifiManager::reconnect() {
   }
   WiFi.reconnect();
 }
+
+bool WifiManager::triggerDeterrenceSystem(float probability, float threshold, const char* modelVersion, const char* deviceID) {
+  if (!isConnected()) {
+    if (_debug) {
+      Serial.println("Not connected to WiFi, cannot trigger deterrence system.");
+    }
+    return false;
+  }
+
+  // prepare json payload
+  String jsonPayload = "{";
+  jsonPayload += "\"action\":\"trigger_deterrence\",";
+  jsonPayload += "\"activated\":true,";
+  jsonPayload += "\"timestamp\":" + String((uint32_t)time(nullptr)) + ",";
+  jsonPayload += "\"trigger_reason\":\"probability_threshold\",";
+  jsonPayload += "\"probability\":" + String(probability, 6) + ",";
+  jsonPayload += "\"threshold\":" + String(threshold, 6) + ",";
+  jsonPayload += "\"model_version\":\"" + String(modelVersion) + "\",";
+  jsonPayload += "\"device_id\":\"" + String(deviceID) + "\"";
+  jsonPayload += "}";
+
+  // send get request with json information to deterrence system
+  String url = "/";
+  if (_debug) {
+    Serial.print("Triggering deterrence system with payload: ");
+    Serial.println(jsonPayload);
+  }
+
+  if (_wifiClient.connect(_ipAddress, 80)) {
+    _wifiClient.println("POST " + url + " HTTP/1.1");
+    _wifiClient.println("Host: " + _ipAddress.toString());
+    _wifiClient.println("Content-Type: application/json");
+    _wifiClient.println("Content-Length: " + String(jsonPayload.length()));
+    _wifiClient.println();
+    _wifiClient.print(jsonPayload);
+    _wifiClient.stop();
+    if (_debug) {
+      Serial.println("Deterrence system triggered successfully.");
+    }
+    return true;
+  } else {
+    if (_debug) {
+      Serial.println("Failed to connect to deterrence system");
+    }
+    return false;
+  }
