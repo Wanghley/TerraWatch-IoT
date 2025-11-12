@@ -34,10 +34,13 @@ private:
     bool _debug;
     unsigned int udpPort;
 
+
     char incomingPacket[512];
-    
+
     // create wifi client
     WiFiClient _wifiClient;
+
+    // IP Address of Deter ESP32
     IPAddress _ipAddress;
     WiFiUDP udp;
     // This is the static event handler required by the ESP-IDF

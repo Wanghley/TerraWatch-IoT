@@ -114,6 +114,9 @@ void WifiManager::identifyIP() {
       String ip = doc["ip"];
       String mac = doc["mac"];
       String type = doc["type"];
+      
+      // Capture Deter ESP32 IP Address
+      _ipAddress = doc["ip"];
 
       Serial.printf("Device ID: %s | IP: %s | MAC: %s | Type: %s\n",
                     id.c_str(), ip.c_str(), mac.c_str(), type.c_str());
