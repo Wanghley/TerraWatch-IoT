@@ -7,7 +7,7 @@
 class WifiManager {
 public:
     // Constructor: Takes SSID and password when created
-    WifiManager(const char* ssid, const char* password, bool debug = false, IPAddress staticIP = IPAddress(0,0,0,0));
+    WifiManager(const char* ssid, const char* password, bool debug = false, IPAddress staticIP = IPAddress(0,0,0,0), unsigned int udpPort = 4210, const char* targetId = "GROUP2_DETER_ESP");
 
     // Main connection function (blocking)
     void connect();
