@@ -34,7 +34,7 @@ unsigned int UDP_PORT = 4210;
 // ==========================
 
 // Manager objects
-WifiManager wifiManager(WIFI_SSID, WIFI_PASSWORD, DEBUG, UDP_PORT, TARGET_ID);
+WifiManager wifiManager(WIFI_SSID, WIFI_PASSWORD, DEBUG, IPAddress(0,0,0,0), UDP_PORT, TARGET_ID);
 SleepManager sleepManager(LPIR, CPIR, RPIR);
 LedManager ledManager(LED_BUILTIN, BRIGHTNESS);
 
