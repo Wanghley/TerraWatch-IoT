@@ -136,3 +136,4 @@ bool WifiManager::triggerDeterrenceSystem(float probability, float threshold, co
     }
     return false;
   }
+}
