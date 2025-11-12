@@ -5,9 +5,12 @@
 volatile bool WifiManager::_wifiConnected = false;
 static WifiManager* instancePtr = nullptr;
 
-WifiManager::WifiManager(const char* ssid, const char* password, bool debug, unsigned int updPort, const char* targetId, IPAddress staticIP)
-  : _ssid(ssid), _password(password), _debug(debug), _udpPort(udpPort), _targetId(targetId), _staticIP(staticIP)  {
-    instancePtr = this; // store pointer for static handler
+WifiManager::WifiManager(const char* ssid, const char* password, bool debug, IPAddress staticIP, unsigned int udpPort, const char* targetId)
+    : _ssid(ssid), _password(password), _debug(debug), udpPort(udpPort), targetId(targetId) {
+    instancePtr = this;
+    if (staticIP != IPAddress(0,0,0,0)) {
+        _ipAddress = staticIP;
+    }
 }
 
 
@@ -22,7 +25,6 @@ void WifiManager::handleWiFiEvent(WiFiEvent_t event) {
             case ARDUINO_EVENT_WIFI_STA_GOT_IP:
                 Serial.print("WiFi connected! IP: ");
                 Serial.println(WiFi.localIP());
-                identifyIP();
                 break;
             case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
                 Serial.println("WiFi disconnected.");
@@ -60,6 +62,8 @@ void WifiManager::connect() {
     if (_debug) {
       Serial.println("\n✅ WiFi connected successfully!");
     }
+
+    identifyIP();
     
     // THIS IS THE KEY: Enable Wi-Fi modem sleep.
     // This keeps the connection alive during light sleep.
@@ -188,3 +192,4 @@ bool WifiManager::triggerDeterrenceSystem(float probability, float threshold, co
     }
     return false;
   }
+}

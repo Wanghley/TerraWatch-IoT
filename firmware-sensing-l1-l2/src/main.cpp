@@ -5,15 +5,16 @@
 #include "thermal_array_manager.h"
 #include "mmWave_array_manager.h"
 #include "mic_manager.h"
+#include "ping_wire.h"
 
 // ====== USER CONFIG ======
-#define LPIR 3
+#define LPIR 12
 #define CPIR 13
-#define RPIR 2
+#define RPIR 14
 
 #define DEBUG true
 
-#define BRIGHTNESS 15  // RGB LED brightness (0-255)
+#define BRIGHTNESS 5  // RGB LED brightness (0-255)
 const char* WIFI_SSID     = "ECE449deco";
 const char* WIFI_PASSWORD = "ece449$$";
 const char* TARGET_ID = "GROUP2_DETER_ESP";  // the one we want to stop
@@ -22,18 +23,18 @@ unsigned int UDP_PORT = 4210;
 // Thermal I2C pins
 #define T0_SDA 48
 #define T0_SCL 47
-#define T1_SDA 45
-#define T1_SCL 20
+#define T1_SDA 8
+#define T1_SCL 9
 
 // mmWave pins
 #define RADAR1_RX 16 // LEFT
-#define RADAR1_TX 15 // LEFT
+#define RADAR1_TX 10 // LEFT
 #define RADAR2_RX 17 // RIGHT
 #define RADAR2_TX 18 // RIGHT
 // ==========================
 
 // Manager objects
-WifiManager wifiManager(WIFI_SSID, WIFI_PASSWORD, DEBUG, UDP_PORT, TARGET_ID);
+WifiManager wifiManager(WIFI_SSID, WIFI_PASSWORD, DEBUG, IPAddress(0,0,0,0), UDP_PORT, TARGET_ID);
 SleepManager sleepManager(LPIR, CPIR, RPIR);
 LedManager ledManager(LED_BUILTIN, BRIGHTNESS);
 
@@ -44,11 +45,13 @@ MicManager micManager(0.2, DEBUG);
 void setup() {
     Serial.begin(115200);
     delay(500);
-    Serial.println("\n--- Farm Defense System Booting Up ---");
+    if (DEBUG) {
+        Serial.println("\n--- Farm Defense System Booting Up ---");
+    }
 
     // Init LED
     ledManager.begin();
-    ledManager.setColor(255, 255, 0); // Yellow = setup start
+    ledManager.setColor(100, 100, 0); // Yellow = setup start
 
     // Init Wi-Fi
     wifiManager.connect();
@@ -58,34 +61,51 @@ void setup() {
 
     // Init sensors
     if (!thermalManager.begin(T0_SDA, T0_SCL, T1_SDA, T1_SCL)) {
-        Serial.println("⚠️ Thermal sensors failed!");
+        if (DEBUG) {
+            Serial.println("⚠️ Thermal sensors failed!");
+        }
     } else {
-        Serial.println("Thermal sensors initialized.");
+        if (DEBUG) {
+            Serial.println("Thermal sensors initialized.");
+        }
     }
 
     if (!mmWaveManager.begin()) {
-        Serial.println("⚠️ mmWave radars failed!");
+        if (DEBUG) {
+            Serial.println("⚠️ mmWave radars failed!");
+        }
     } else {
-        Serial.println("mmWave radars initialized.");
+        if (DEBUG) {
+            Serial.println("mmWave radars initialized.");
+        }
     }
 
     micManager.begin();
+    if (DEBUG) {
+        Serial.println("Mic manager initialized.");
+    }
 }
 
 void loop() {
     // --- GO TO SLEEP ---
-    Serial.println("Entering light sleep, waiting for animal...");
-    ledManager.setColor(0, 0, 255); // Blue = sleep
+    if (DEBUG) {
+        Serial.println("\n--- GOING TO SLEEP ---");
+    }
+    ledManager.setColor(0, 0, 0); // Blue = sleep
 
     sleepManager.goToSleep();  // Blocking, wake on PIR
 
     // --- WOKE UP ---
-    ledManager.setColor(0, 255, 0); // Green = awake
-    Serial.println("\n--- WOKE UP! Animal detected! ---");
+    ledManager.setColor(0, 100, 0); // Green = awake
+    if (DEBUG) {
+        Serial.println("\n--- WOKE UP ---");
+    }
 
     // --- CHECK WIFI ---
     if (!wifiManager.isConnected()) {
-        Serial.println("⚠️ Wi-Fi disconnected. Reconnecting...");
+        if (DEBUG) {
+           Serial.println("⚠️ Wi-Fi disconnected. Reconnecting...");
+        }
         wifiManager.connect();
     }
 
@@ -142,5 +162,7 @@ void loop() {
     serializeJson(doc, output);
     Serial.println(output);
 
-    Serial.println("Alert sent. Going back to sleep.\n");
+    if (DEBUG) {
+        Serial.println("\n--- DATA SENT ---");
+    }
 }
