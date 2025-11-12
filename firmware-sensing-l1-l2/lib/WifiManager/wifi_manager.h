@@ -2,7 +2,7 @@
 
 #include <WiFi.h>
 #include <WiFiUDP.h>
-#include <ArduinoJSON.h>
+#include <ArduinoJson.h>
 
 class WifiManager {
 public:
