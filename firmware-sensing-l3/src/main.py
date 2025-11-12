@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
 """
-Main script that monitors GPIO for rising edge triggers and runs CNN inference.
-Includes debouncing to prevent multiple triggers within 3 seconds.
+Main script that monitors GPIO for pulse pattern triggers and runs CNN inference.
+Uses rising edge detection to identify two event types:
+- Event 1: Single rising edge (no second edge within timeout) - captures frame only
+- Event 2: Two rising edges within timeout period - captures frame and runs CNN
+
+Detection logic:
+1. Detect first rising edge (LOW -> HIGH transition)
+2. Wait for second rising edge within PULSE_TIMEOUT_MS
+3. If second edge detected within timeout -> Event 2
+4. If timeout reached without second edge -> Event 1
 """
 
 import subprocess
@@ -10,10 +18,13 @@ import signal
 import sys
 from pathlib import Path
 import wiringpi
+import cnn
 
 # GPIO Configuration (wiringPi numbering)
-GPIO_PIN = 2  # wiringPi pin 2 (BCM GPIO 27, physical pin 13)
-DEBOUNCE_TIME = 0.3  # Minimum seconds between triggers
+GPIO_INPUT_PIN = 2  # wiringPi pin 2 (BCM GPIO 27, physical pin 13)
+GPIO_OUTPUT_PIN = 3  # wiringPi pin 3 (BCM GPIO 22, physical pin 15) - output for animal detection
+PULSE_TIMEOUT_MS = 80  # Timeout for detecting second rising edge (ms)
+DEBOUNCE_TIME = 0.02  # Minimum seconds between triggers
 
 # Path to CNN script
 SCRIPT_DIR = Path(__file__).parent
@@ -22,6 +33,11 @@ CNN_SCRIPT = SCRIPT_DIR / "cnn.py"
 # Global variables
 last_trigger_time = 0
 running = True
+
+# Pulse detection variables
+first_rising_edge_time = None  # Time of first rising edge (ms)
+waiting_for_second_edge = False  # Whether we're waiting for second rising edge
+last_gpio_state = wiringpi.LOW  # Previous GPIO state for edge detection
 
 
 def signal_handler(sig, frame):
@@ -79,9 +95,36 @@ def get_latest_results_file():
     return max(result_files, key=lambda p: p.stat().st_mtime)
 
 
+def capture_frame_only():
+    """Capture a frame from the camera without running CNN inference."""
+    print(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Event 1 detected - Capturing frame only...")
+    try:
+        if cnn.capture_frame():
+            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Frame captured successfully")
+            return True
+        else:
+            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Frame capture failed")
+            return False
+    except Exception as e:
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Error capturing frame: {e}")
+        return False
+
+
+def trigger_gpio_output(duration_ms=100):
+    """Set GPIO_OUTPUT_PIN HIGH for specified duration in milliseconds."""
+    try:
+        wiringpi.digitalWrite(GPIO_OUTPUT_PIN, wiringpi.HIGH)
+        time.sleep(duration_ms / 1000.0)
+        wiringpi.digitalWrite(GPIO_OUTPUT_PIN, wiringpi.LOW)
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] GPIO output pin {GPIO_OUTPUT_PIN} set HIGH for {duration_ms}ms")
+    except Exception as e:
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Error controlling GPIO output: {e}")
+
+
 def trigger_cnn():
-    """Execute the CNN inference script and check for human/animal detections."""
-    print(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] GPIO trigger detected - Running CNN inference...")
+    """Execute the CNN inference script and check for human/animal detections.
+    Returns True if an animal was detected, False otherwise."""
+    print(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Event 2 detected - Running CNN inference...")
     try:
         result = subprocess.run(
             [sys.executable, str(CNN_SCRIPT)],
@@ -110,11 +153,15 @@ def trigger_cnn():
         
         # Check for animal detections
         animal_labels = ["teddy bear", "toy", "animal", "squirrel", "groundhog", "raccoon", "cat", "dog"]
-        if any(det["label"] in animal_labels and det["confidence"] >= 0.30 for det in detections):
+        animal_detected = any(det["label"] in animal_labels and det["confidence"] >= 0.30 for det in detections)
+        
+        if animal_detected:
             print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Animal Detected")
+            # Trigger GPIO output pin HIGH for 100ms
+            trigger_gpio_output(100)
         
         print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] CNN inference completed")
-        return True
+        return animal_detected
     except subprocess.CalledProcessError as e:
         print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Error running CNN script: {e}")
         if e.stdout:
@@ -128,7 +175,7 @@ def trigger_cnn():
 
 
 def setup_gpio():
-    """Initialize wiringPi and configure the button input."""
+    """Initialize wiringPi and configure the input and output pins."""
     try:
         if wiringpi.wiringPiSetup() != 0:
             print("Error: wiringPiSetup() failed")
@@ -137,17 +184,84 @@ def setup_gpio():
         print(f"Error initializing wiringPi: {e}")
         return False
 
-    # Configure pin as input with internal pull-up so the button can pull it to ground
-    wiringpi.pinMode(GPIO_PIN, wiringpi.INPUT)
-    wiringpi.pullUpDnControl(GPIO_PIN, wiringpi.PUD_UP)
+    # Configure input pin with internal pull-down (idle state is LOW)
+    wiringpi.pinMode(GPIO_INPUT_PIN, wiringpi.INPUT)
+    wiringpi.pullUpDnControl(GPIO_INPUT_PIN, wiringpi.PUD_DOWN)
 
-    print(f"✓ wiringPi initialized. Monitoring wiringPi pin {GPIO_PIN} (pull-up enabled)")
+    # Configure output pin
+    wiringpi.pinMode(GPIO_OUTPUT_PIN, wiringpi.OUTPUT)
+    wiringpi.digitalWrite(GPIO_OUTPUT_PIN, wiringpi.LOW)
+
+    print(f"✓ wiringPi initialized.")
+    print(f"  Input pin: {GPIO_INPUT_PIN} (pull-down enabled, idle=LOW)")
+    print(f"  Output pin: {GPIO_OUTPUT_PIN} (initialized to LOW)")
     return True
+
+
+def detect_pulse_pattern():
+    """Detect pulse patterns on GPIO_INPUT_PIN using rising edge detection.
+    Returns:
+        'event1' if single rising edge detected (no second edge within timeout)
+        'event2' if two rising edges detected within timeout
+        None if no event detected yet
+    """
+    global first_rising_edge_time, waiting_for_second_edge, last_gpio_state
+    
+    current_time_ms = time.time() * 1000.0
+    current_state = wiringpi.digitalRead(GPIO_INPUT_PIN)
+    
+    # Detect rising edge (LOW -> HIGH transition) BEFORE updating last state
+    rising_edge = (last_gpio_state == wiringpi.LOW and current_state == wiringpi.HIGH)
+    
+    # Check for timeout first - if we've been waiting too long, this is Event 1
+    if waiting_for_second_edge and first_rising_edge_time is not None:
+        time_since_first = current_time_ms - first_rising_edge_time
+        if time_since_first > PULSE_TIMEOUT_MS:
+            # Timeout reached - this was Event 1 (single pulse)
+            waiting_for_second_edge = False
+            first_rising_edge_time = None
+            # Update state after handling timeout
+            last_gpio_state = current_state
+            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Timeout reached ({time_since_first:.1f}ms) - Event 1!")
+            return 'event1'
+    
+    # Handle rising edges
+    if rising_edge:
+        if not waiting_for_second_edge:
+            # First rising edge detected
+            first_rising_edge_time = current_time_ms
+            waiting_for_second_edge = True
+            last_gpio_state = current_state
+            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] First rising edge detected, waiting for second edge...")
+            return None
+        else:
+            # Second rising edge detected - check if within timeout window
+            time_since_first = current_time_ms - first_rising_edge_time
+            if time_since_first <= PULSE_TIMEOUT_MS:
+                # Event 2 detected: two rising edges within timeout
+                waiting_for_second_edge = False
+                first_rising_edge_time = None
+                last_gpio_state = current_state
+                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Second rising edge detected ({time_since_first:.1f}ms after first) - Event 2!")
+                return 'event2'
+            else:
+                # Edge case: second edge arrived but timeout was exceeded
+                # This can happen if the edge arrives right at the boundary
+                # Treat as Event 1 (timeout) and start new detection with this edge
+                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Second edge after timeout ({time_since_first:.1f}ms) - Event 1, starting new detection")
+                first_rising_edge_time = current_time_ms
+                # Keep waiting_for_second_edge = True for new detection
+                last_gpio_state = current_state
+                return 'event1'
+    
+    # Update last state if no edge detected and no timeout
+    last_gpio_state = current_state
+    return None
 
 
 def main():
     """Main execution function."""
-    global running, last_trigger_time
+    global running, last_trigger_time, waiting_for_second_edge, first_rising_edge_time, last_gpio_state
     
     # Register signal handler for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)
@@ -156,9 +270,14 @@ def main():
     print("=" * 60)
     print("GPIO Monitor for CNN Inference")
     print("=" * 60)
-    print(f"GPIO Pin: {GPIO_PIN} (wiringPi numbering)")
+    print(f"Input Pin: {GPIO_INPUT_PIN} (wiringPi numbering)")
+    print(f"Output Pin: {GPIO_OUTPUT_PIN} (wiringPi numbering)")
     print(f"CNN Script: {CNN_SCRIPT}")
     print(f"Debounce Time: {DEBOUNCE_TIME} seconds")
+    print(f"Pulse Timeout: {PULSE_TIMEOUT_MS}ms")
+    print("=" * 60)
+    print("Event 1: Single rising edge (no second edge within timeout) -> Capture frame only")
+    print("Event 2: Two rising edges within timeout -> Capture + CNN inference")
     print("=" * 60)
     print("Note: GPIO access may require root privileges (sudo)")
     print("=" * 60)
@@ -167,25 +286,40 @@ def main():
         print("Failed to setup GPIO. Exiting.")
         sys.exit(1)
     
-    print("Monitoring GPIO for button presses (falling edge, pull-up enabled)...")
-    print("Press Ctrl+C to exit\n")
+    # Initialize GPIO state
+    last_gpio_state = wiringpi.digitalRead(GPIO_INPUT_PIN)
     
-    last_state = wiringpi.digitalRead(GPIO_PIN)
+    print("Monitoring GPIO for rising edge patterns (idle state: LOW)...")
+    print("Press Ctrl+C to exit\n")
     
     try:
         while running:
-            state = wiringpi.digitalRead(GPIO_PIN)
-            if last_state == wiringpi.HIGH and state == wiringpi.LOW:
+            event = detect_pulse_pattern()
+            
+            if event:
                 current_time = time.time()
+                # Debouncing: ignore events if too soon after last trigger
                 if current_time - last_trigger_time >= DEBOUNCE_TIME:
                     last_trigger_time = current_time
-                    trigger_cnn()
+                    
+                    if event == 'event1':
+                        capture_frame_only()
+                    elif event == 'event2':
+                        trigger_cnn()
                 else:
                     remaining_time = DEBOUNCE_TIME - (current_time - last_trigger_time)
-                    print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Button press ignored (debounce: {remaining_time:.2f}s remaining)")
-            last_state = state
-            time.sleep(0.01)
+                    print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Event ignored (debounce: {remaining_time:.2f}s remaining)")
+                    # Reset detection state after ignoring
+                    waiting_for_second_edge = False
+                    first_rising_edge_time = None
+            
+            time.sleep(0.001)  # 1ms polling interval for precise edge detection
     finally:
+        # Ensure output pin is set to LOW on exit
+        try:
+            wiringpi.digitalWrite(GPIO_OUTPUT_PIN, wiringpi.LOW)
+        except:
+            pass
         print("GPIO monitor exiting")
 
 
