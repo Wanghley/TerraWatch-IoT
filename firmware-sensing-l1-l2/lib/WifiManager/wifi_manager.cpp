@@ -5,8 +5,8 @@
 volatile bool WifiManager::_wifiConnected = false;
 static WifiManager* instancePtr = nullptr;
 
-WifiManager::WifiManager(const char* ssid, const char* password, bool debug, IPAddress staticIP)
-  : _ssid(ssid), _password(password), _debug(debug), _ipAddress(staticIP) {
+WifiManager::WifiManager(const char* ssid, const char* password, bool debug, unsigned int updPort, const char* targetId, IPAddress staticIP)
+  : _ssid(ssid), _password(password), _debug(debug), _udpPort(udpPort), _targetId(targetId), _staticIP(staticIP)  {
     instancePtr = this; // store pointer for static handler
 }
 
@@ -22,6 +22,7 @@ void WifiManager::handleWiFiEvent(WiFiEvent_t event) {
             case ARDUINO_EVENT_WIFI_STA_GOT_IP:
                 Serial.print("WiFi connected! IP: ");
                 Serial.println(WiFi.localIP());
+                identifyIP();
                 break;
             case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
                 Serial.println("WiFi disconnected.");
@@ -89,6 +90,54 @@ void WifiManager::reconnect() {
     Serial.println("Reconnecting to WiFi...");
   }
   WiFi.reconnect();
+}
+
+void WifiManager::identifyIP() {
+  udp.begin(udpPort);
+  Serial.printf("Listening for UDP JSON packets on port %d...\n", udpPort);
+  while(1){
+    int packetSize = udp.parsePacket();
+    if (packetSize) {
+      int len = udp.read(incomingPacket, sizeof(incomingPacket) - 1);
+      if (len > 0) incomingPacket[len] = '\0';
+
+      Serial.printf("\nReceived: %s\n", incomingPacket);
+
+      StaticJsonDocument<512> doc;
+      DeserializationError error = deserializeJson(doc, incomingPacket);
+      if (error) {
+        Serial.println("JSON parse failed");
+        return;
+      }
+
+      String id = doc["id"];
+      String ip = doc["ip"];
+      String mac = doc["mac"];
+      String type = doc["type"];
+
+      Serial.printf("Device ID: %s | IP: %s | MAC: %s | Type: %s\n",
+                    id.c_str(), ip.c_str(), mac.c_str(), type.c_str());
+
+      // Check if this is the one we want to stop
+      if (id == targetId && type == "broadcast") {
+        Serial.println("Matched target! Sending STOP command...");
+
+        StaticJsonDocument<128> reply;
+        reply["type"] = "stop";
+        reply["target"] = id;
+
+        char buffer[128];
+        size_t n = serializeJson(reply, buffer);
+
+        udp.beginPacket(udp.remoteIP(), udp.remotePort());
+        udp.write((uint8_t*)buffer, n);
+        udp.endPacket();
+
+        Serial.println("STOP message sent.");
+        break;
+      }
+    }
+  }
 }
 
 bool WifiManager::triggerDeterrenceSystem(float probability, float threshold, const char* modelVersion, const char* deviceID) {

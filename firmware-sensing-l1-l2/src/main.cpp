@@ -16,6 +16,8 @@
 #define BRIGHTNESS 15  // RGB LED brightness (0-255)
 const char* WIFI_SSID     = "ECE449deco";
 const char* WIFI_PASSWORD = "ece449$$";
+const char* TARGET_ID = "GROUP2_DETER_ESP";  // the one we want to stop
+unsigned int UDP_PORT = 4210;
 
 // Thermal I2C pins
 #define T0_SDA 48
@@ -31,7 +33,7 @@ const char* WIFI_PASSWORD = "ece449$$";
 // ==========================
 
 // Manager objects
-WifiManager wifiManager(WIFI_SSID, WIFI_PASSWORD, DEBUG);
+WifiManager wifiManager(WIFI_SSID, WIFI_PASSWORD, DEBUG, UDP_PORT, TARGET_ID);
 SleepManager sleepManager(LPIR, CPIR, RPIR);
 LedManager ledManager(LED_BUILTIN, BRIGHTNESS);
 
