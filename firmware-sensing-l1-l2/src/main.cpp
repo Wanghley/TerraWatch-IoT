@@ -162,6 +162,8 @@ void loop() {
     serializeJson(doc, output);
     Serial.println(output);
 
+    wifiManager.triggerDeterrenceSystem(10,10,"V1.0","WAN");
+
     if (DEBUG) {
         Serial.println("\n--- DATA SENT ---");
     }
