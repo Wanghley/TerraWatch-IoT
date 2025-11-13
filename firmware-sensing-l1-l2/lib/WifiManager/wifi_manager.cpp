@@ -118,6 +118,9 @@ void WifiManager::identifyIP() {
       String ip = doc["ip"];
       String mac = doc["mac"];
       String type = doc["type"];
+      
+      // Capture Deter ESP32 IP Address
+      _ipAddress = doc["ip"];
 
       Serial.printf("Device ID: %s | IP: %s | MAC: %s | Type: %s\n",
                     id.c_str(), ip.c_str(), mac.c_str(), type.c_str());
@@ -126,18 +129,20 @@ void WifiManager::identifyIP() {
       if (id == targetId && type == "broadcast") {
         Serial.println("Matched target! Sending STOP command...");
 
-        StaticJsonDocument<128> reply;
-        reply["type"] = "stop";
-        reply["target"] = id;
+        for(int i = 0; i<5; i++){
+          StaticJsonDocument<128> reply;
+          reply["type"] = "stop";
+          reply["target"] = id;
 
-        char buffer[128];
-        size_t n = serializeJson(reply, buffer);
+          char buffer[128];
+          size_t n = serializeJson(reply, buffer);
 
-        udp.beginPacket(udp.remoteIP(), udp.remotePort());
-        udp.write((uint8_t*)buffer, n);
-        udp.endPacket();
+          udp.beginPacket(udp.remoteIP(), udp.remotePort());
+          udp.write((uint8_t*)buffer, n);
+          udp.endPacket();
 
-        Serial.println("STOP message sent.");
+          Serial.println("STOP message sent.");
+        }
         break;
       }
     }
@@ -178,6 +183,15 @@ bool WifiManager::triggerDeterrenceSystem(float probability, float threshold, co
     _wifiClient.println("Content-Length: " + String(jsonPayload.length()));
     _wifiClient.println();
     _wifiClient.print(jsonPayload);
+
+    // Read server response
+    while (_wifiClient.connected()) {
+        while (_wifiClient.available()) {
+            String line = _wifiClient.readStringUntil('\n');
+            line.trim(); // remove \r
+            Serial.println("Server: " + line); // Print or parse the response
+        }
+    }
     _wifiClient.stop();
     if (_debug) {
       Serial.println("Deterrence system triggered successfully.");
