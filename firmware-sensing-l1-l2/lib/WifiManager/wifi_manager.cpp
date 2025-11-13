@@ -183,6 +183,15 @@ bool WifiManager::triggerDeterrenceSystem(float probability, float threshold, co
     _wifiClient.println("Content-Length: " + String(jsonPayload.length()));
     _wifiClient.println();
     _wifiClient.print(jsonPayload);
+
+    // Read server response
+    while (_wifiClient.connected()) {
+        while (_wifiClient.available()) {
+            String line = _wifiClient.readStringUntil('\n');
+            line.trim(); // remove \r
+            Serial.println("Server: " + line); // Print or parse the response
+        }
+    }
     _wifiClient.stop();
     if (_debug) {
       Serial.println("Deterrence system triggered successfully.");

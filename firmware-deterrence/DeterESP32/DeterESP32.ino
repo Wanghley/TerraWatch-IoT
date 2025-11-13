@@ -206,75 +206,118 @@ void loop() {
   WiFiClient client = server.available();
   if (client) {
     Serial.println("inside if");
+    
+    // Wait for data from the client
+    while (client.connected() && !client.available()) delay(1);
+
+    // Read HTTP headers
+    while (client.connected()) {
+      String line = client.readStringUntil('\n');  // read a line
+      line.trim(); // remove \r and whitespace
+      if (line.length() == 0) break;  // empty line = end of headers
+      Serial.println("Header: " + line);
+    }
+    
+    // Read JSON Payload
+    String body = "";
+    while (client.available()) {
+      body += (char)client.read();  // read remaining bytes
+    }
+    Serial.println("JSON body received:");
+    Serial.println(body);
+
+    // Obtain
+    DynamicJsonDocument doc(512);  // make sure size is big enough
+    deserializeJson(doc, body);
+
+    const char* action = doc["action"];
+    bool activated = doc["activated"];
+    uint32_t timestamp = doc["timestamp"];
+    double probability = doc["probability"];
+    double threshold = doc["threshold"];
+    const char* modelVersion = doc["model_version"];
+    const char* deviceID = doc["device_id"];
+
+    Serial.println(action);
+    Serial.println(activated);
+    Serial.println(timestamp);
+
+    //Send HTTP Response
+    client.println("HTTP/1.1 200 OK");          // Status line
+    client.println("Content-Type: text/plain"); // Type of response
+    client.println("Connection: close");        // Close after response
+    client.println();                            // Empty line separates headers from body
+    client.println("Message received!");        // Response body
+
     // close the connection:
     client.stop();
 
-    if (!player.playingMusic) {
-      Serial.println("Connected to client Starting playback");
-      player.startPlayingFile(MP3_FILE);
-      Serial.println("problem is with mp3 file");
+    if(activated){
+      if (!player.playingMusic) {
+        Serial.println("Connected to client Starting playback");
+        player.startPlayingFile(MP3_FILE);
+        Serial.println("problem is with mp3 file");
+      }
+
+      // Random ON duration between 200ms and 2000ms
+      int onTime = random(200, 2000);
+
+      // Random OFF duration between 200ms and 3000ms
+      int offTime = random(200, 3000);
+
+      digitalWrite(relayPin, LOW);
+      delay(onTime);
+      digitalWrite(relayPin, HIGH);
+      delay(offTime);
+
+      
+      //START MOTOR
+      analogWrite(ENA, 255);
+      analogWrite(ENB, 255);
+
+      Serial.println("starting motor!");
+    //   Map speed (0–255) → delay (ms between steps)
+    //   Sets speed --> Restate and change "speedvalue" to change the speed
+      stepDelayMs = map(speedValue, 0, 255, 10, 1);
+
+      unsigned long startTime = millis();
+    //  while (millis() - startTime < (unsigned long)runSeconds * 1000UL) {
+    //    if (direction == 'F') stepForward();
+    //    else stepBackward();
+    //  }
+
+      speedValue = 200;
+      while (millis() - startTime < (unsigned long)2 * 1000UL) {
+        Serial.println("starting forward");
+        stepForward();
+      }
+
+      startTime = millis();
+      while (millis() - startTime < (unsigned long)2 * 1000UL) {
+        Serial.println("starting backward");
+        stepBackward();
+      }
+
+      speedValue = 150;
+      stepDelayMs = map(speedValue, 0, 255, 10, 1);
+      startTime = millis();  
+      while (millis() - startTime < (unsigned long)2 * 1000UL) {
+        Serial.println("starting forward 2");
+        stepForward();
+      }
+
+      startTime = millis();
+      while (millis() - startTime < (unsigned long)2 * 1000UL) {
+        Serial.println("starting backward 2");
+        stepBackward();
+      }
+
+      stopStepper();
+
+      while (player.playingMusic) {
+        delay(1000);
+      }
     }
-
-    // Random ON duration between 200ms and 2000ms
-    int onTime = random(200, 2000);
-
-    // Random OFF duration between 200ms and 3000ms
-    int offTime = random(200, 3000);
-
-    digitalWrite(relayPin, LOW);
-    delay(onTime);
-    digitalWrite(relayPin, HIGH);
-    delay(offTime);
-
-    
-    //START MOTOR
-    analogWrite(ENA, 255);
-    analogWrite(ENB, 255);
-
-    Serial.println("starting motor!");
-  //   Map speed (0–255) → delay (ms between steps)
-  //   Sets speed --> Restate and change "speedvalue" to change the speed
-    stepDelayMs = map(speedValue, 0, 255, 10, 1);
-
-    unsigned long startTime = millis();
-  //  while (millis() - startTime < (unsigned long)runSeconds * 1000UL) {
-  //    if (direction == 'F') stepForward();
-  //    else stepBackward();
-  //  }
-
-    speedValue = 200;
-    while (millis() - startTime < (unsigned long)2 * 1000UL) {
-      Serial.println("starting forward");
-      stepForward();
-    }
-
-    startTime = millis();
-    while (millis() - startTime < (unsigned long)2 * 1000UL) {
-      Serial.println("starting backward");
-      stepBackward();
-    }
-
-    speedValue = 150;
-    stepDelayMs = map(speedValue, 0, 255, 10, 1);
-    startTime = millis();  
-    while (millis() - startTime < (unsigned long)2 * 1000UL) {
-      Serial.println("starting forward 2");
-      stepForward();
-    }
-
-    startTime = millis();
-    while (millis() - startTime < (unsigned long)2 * 1000UL) {
-      Serial.println("starting backward 2");
-      stepBackward();
-    }
-
-    stopStepper();
-
-    while (player.playingMusic) {
-      delay(1000);
-    }
-
-    
   }
 }
 
