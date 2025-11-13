@@ -142,6 +142,7 @@ void WifiManager::identifyIP() {
           udp.endPacket();
 
           Serial.println("STOP message sent.");
+          delay(200);
         }
         break;
       }
