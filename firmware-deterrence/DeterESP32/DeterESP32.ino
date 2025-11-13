@@ -130,9 +130,10 @@ void setup() {
     delay(tryDelay);
 
     if (numberOfTries <= 0) {
-      Serial.print("[WiFi] Failed to connect to WiFi!");
+      Serial.print("[WiFi] Failed to connect to WiFi! Restarting.");
       // Use disconnect function to force stop trying to connect
       WiFi.disconnect();
+      ESP.restart();
       return;
     } else {
       numberOfTries--;

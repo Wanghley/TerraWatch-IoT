@@ -129,18 +129,20 @@ void WifiManager::identifyIP() {
       if (id == targetId && type == "broadcast") {
         Serial.println("Matched target! Sending STOP command...");
 
-        StaticJsonDocument<128> reply;
-        reply["type"] = "stop";
-        reply["target"] = id;
+        for(int i = 0; i<5; i++){
+          StaticJsonDocument<128> reply;
+          reply["type"] = "stop";
+          reply["target"] = id;
 
-        char buffer[128];
-        size_t n = serializeJson(reply, buffer);
+          char buffer[128];
+          size_t n = serializeJson(reply, buffer);
 
-        udp.beginPacket(udp.remoteIP(), udp.remotePort());
-        udp.write((uint8_t*)buffer, n);
-        udp.endPacket();
+          udp.beginPacket(udp.remoteIP(), udp.remotePort());
+          udp.write((uint8_t*)buffer, n);
+          udp.endPacket();
 
-        Serial.println("STOP message sent.");
+          Serial.println("STOP message sent.");
+        }
         break;
       }
     }
