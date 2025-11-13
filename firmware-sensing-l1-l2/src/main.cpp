@@ -1,4 +1,7 @@
 #include <Arduino.h>
+#include <ArduinoJson.h> // <-- ADDED
+#include <WiFi.h>        // <-- ADDED (for IPAddress)
+
 #include "wifi_manager.h"
 #include "sleep_manager.h"
 #include "led_manager.h"
@@ -6,6 +9,7 @@
 #include "mmWave_array_manager.h"
 #include "mic_manager.h"
 #include "ping_wire.h"
+#include "inference_manager.h"  // <--- This is correct
 
 // ====== USER CONFIG ======
 #define LPIR 12
@@ -14,33 +18,33 @@
 
 #define DEBUG true
 
-#define BRIGHTNESS 5  // RGB LED brightness (0-255)
+#define BRIGHTNESS 5
 const char* WIFI_SSID     = "ECE449deco";
 const char* WIFI_PASSWORD = "ece449$$";
-const char* TARGET_ID = "GROUP2_DETER_ESP";  // the one we want to stop
+const char* TARGET_ID = "GROUP2_DETER_ESP";
 unsigned int UDP_PORT = 4210;
 
-// Thermal I2C pins
 #define T0_SDA 48
 #define T0_SCL 47
 #define T1_SDA 8
 #define T1_SCL 9
 
-// mmWave pins
-#define RADAR1_RX 16 // LEFT
-#define RADAR1_TX 10 // LEFT
-#define RADAR2_RX 17 // RIGHT
-#define RADAR2_TX 18 // RIGHT
+#define RADAR1_RX 16
+#define RADAR1_TX 10
+#define RADAR2_RX 17
+#define RADAR2_TX 18
 // ==========================
 
 // Manager objects
 WifiManager wifiManager(WIFI_SSID, WIFI_PASSWORD, DEBUG, IPAddress(0,0,0,0), UDP_PORT, TARGET_ID);
 SleepManager sleepManager(LPIR, CPIR, RPIR);
 LedManager ledManager(LED_BUILTIN, BRIGHTNESS);
-
 ThermalArrayManager thermalManager(0x68, 0x69, 0x69, Wire, Wire1, DEBUG);
 mmWaveArrayManager mmWaveManager(RADAR1_RX, RADAR1_TX, RADAR2_RX, RADAR2_TX, DEBUG);
 MicManager micManager(0.2, DEBUG);
+
+// ADD ML INFERENCE MANAGER
+InferenceManager mlInference(DEBUG);
 
 void setup() {
     Serial.begin(115200);
@@ -49,63 +53,50 @@ void setup() {
         Serial.println("\n--- Farm Defense System Booting Up ---");
     }
 
-    // Init LED
     ledManager.begin();
-    ledManager.setColor(100, 100, 0); // Yellow = setup start
+    ledManager.setColor(100, 100, 0);
 
-    // Init Wi-Fi
     wifiManager.connect();
-
-    // Configure sleep
     sleepManager.configure();
 
-    // Init sensors
     if (!thermalManager.begin(T0_SDA, T0_SCL, T1_SDA, T1_SCL)) {
-        if (DEBUG) {
-            Serial.println("⚠️ Thermal sensors failed!");
-        }
+        if (DEBUG) Serial.println("⚠️ Thermal sensors failed!");
     } else {
-        if (DEBUG) {
-            Serial.println("Thermal sensors initialized.");
-        }
+        if (DEBUG) Serial.println("Thermal sensors initialized.");
     }
 
     if (!mmWaveManager.begin()) {
-        if (DEBUG) {
-            Serial.println("⚠️ mmWave radars failed!");
-        }
+        if (DEBUG) Serial.println("⚠️ mmWave radars failed!");
     } else {
-        if (DEBUG) {
-            Serial.println("mmWave radars initialized.");
-        }
+        if (DEBUG) Serial.println("mmWave radars initialized.");
     }
 
     micManager.begin();
-    if (DEBUG) {
-        Serial.println("Mic manager initialized.");
+    if (DEBUG) Serial.println("Mic manager initialized.");
+
+    // INITIALIZE ML MODEL
+    if (!mlInference.begin()) {
+        if (DEBUG) Serial.println("⚠️ ML inference failed to initialize!");
+        ledManager.setColor(255, 0, 0); // Red = error
+        delay(2000);
+    } else {
+        if (DEBUG) Serial.println("✓ ML inference ready!");
     }
 }
 
 void loop() {
     // --- GO TO SLEEP ---
-    if (DEBUG) {
-        Serial.println("\n--- GOING TO SLEEP ---");
-    }
-    ledManager.setColor(0, 0, 0); // Blue = sleep
-
-    sleepManager.goToSleep();  // Blocking, wake on PIR
+    if (DEBUG) Serial.println("\n--- GOING TO SLEEP ---");
+    ledManager.setColor(0, 0, 0);
+    sleepManager.goToSleep();
 
     // --- WOKE UP ---
-    ledManager.setColor(0, 100, 0); // Green = awake
-    if (DEBUG) {
-        Serial.println("\n--- WOKE UP ---");
-    }
+    ledManager.setColor(0, 100, 0);
+    if (DEBUG) Serial.println("\n--- WOKE UP ---");
 
     // --- CHECK WIFI ---
     if (!wifiManager.isConnected()) {
-        if (DEBUG) {
-           Serial.println("⚠️ Wi-Fi disconnected. Reconnecting...");
-        }
+        if (DEBUG) Serial.println("⚠️ Wi-Fi disconnected. Reconnecting...");
         wifiManager.connect();
     }
 
@@ -122,10 +113,50 @@ void loop() {
     double leftMic = 0, rightMic = 0;
     micManager.read(leftMic, rightMic);
 
-    // --- 4. BUILD COMBINED JSON ---
-    StaticJsonDocument<2048> doc;
+    // --- 4. ADD TO ML BUFFER ---
+    mlInference.addFrame(thermal, r1, r2, leftMic, rightMic);
 
-    // Thermal
+    // --- 5. RUN INFERENCE IF READY ---
+    if (mlInference.isReady()) {
+        int prediction = mlInference.predict();
+        
+        if (prediction == 0) {
+            // HUMAN DETECTED
+            if (DEBUG) {
+                Serial.println("\n>>> 👤 HUMAN DETECTED <<<");
+                Serial.printf("Confidence: %.1f%%\n", 
+                             mlInference.getHumanConfidence() * 100);
+            }
+            ledManager.setColor(0, 255, 0); // Green for human
+            
+            // DO NOT TRIGGER DETERRENCE
+            
+        } else if (prediction == 1) {
+            // ANIMAL DETECTED
+            if (DEBUG) {
+                Serial.println("\n>>> 🐾 ANIMAL DETECTED <<<");
+                Serial.printf("Confidence: %.1f%%\n", 
+                             mlInference.getAnimalConfidence() * 100);
+            }
+            ledManager.setColor(255, 0, 0); // Red for animal
+            
+            // TRIGGER DETERRENCE SYSTEM
+            wifiManager.triggerDeterrenceSystem(10, 10, "V1.0", "ML");
+            
+        } else if (prediction == 2) {
+            if (DEBUG) {
+                Serial.println("Buffering data for ML...");
+            }
+        }
+    } else {
+        if (DEBUG) {
+            Serial.println("Building ML sequence buffer...");
+        }
+    }
+
+    // --- 6. BUILD JSON (for logging/debugging) ---
+    StaticJsonDocument<2048> doc;
+    
     JsonObject thermalObj = doc.createNestedObject("thermal");
     JsonArray leftArr = thermalObj.createNestedArray("left");
     JsonArray centerArr = thermalObj.createNestedArray("center");
@@ -136,7 +167,6 @@ void loop() {
         rightArr.add(thermal.right[i]);
     }
 
-    // mmWave
     JsonObject radarObj = doc.createNestedObject("mmWave");
     JsonObject r1Obj = radarObj.createNestedObject("R1");
     r1Obj["numTargets"] = r1.numTargets;
@@ -152,17 +182,21 @@ void loop() {
     r2Obj["energy"] = r2.energy;
     r2Obj["valid"] = r2.isValid;
 
-    // Mic
     JsonObject micObj = doc.createNestedObject("mic");
     micObj["left"] = leftMic;
     micObj["right"] = rightMic;
 
-    // --- 5. SEND JSON ---
+    // Add ML prediction to JSON
+    if (mlInference.isReady()) {
+        JsonObject mlObj = doc.createNestedObject("ml");
+        mlObj["human_conf"] = mlInference.getHumanConfidence();
+        mlObj["animal_conf"] = mlInference.getAnimalConfidence();
+        mlObj["inference_ms"] = mlInference.getInferenceTimeMs();
+    }
+
     String output;
     serializeJson(doc, output);
     Serial.println(output);
-
-    wifiManager.triggerDeterrenceSystem(10,10,"V1.0","WAN");
 
     if (DEBUG) {
         Serial.println("\n--- DATA SENT ---");
