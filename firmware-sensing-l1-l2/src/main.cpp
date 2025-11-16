@@ -16,15 +16,17 @@
 #include "esp_wifi.h"
 #include "esp_bt.h"
 #include "esp_bt_main.h"
+#include "deterrent_manager.h"
 
 // ====== USER CONFIG ======
 #define LPIR 12
 #define CPIR 13
 #define RPIR 14
 
-#define DEBUG false
+#define DEBUG true
 
 #define BRIGHTNESS 50  // RGB LED brightness (0-255)
+#define kPlaceholderSignalWindowMs 60  // Signal window duration in milliseconds
 
 // --- Removed unused WiFi/UDP vars ---
 // const char* WIFI_SSID     = "ECE449deco";
@@ -37,6 +39,8 @@
 #define T0_SCL 47
 #define T1_SDA 8
 #define T1_SCL 9
+
+#define DETERRENT_PIN 36
 
 // mmWave pins
 #define RADAR1_RX 16 // LEFT
@@ -68,6 +72,7 @@ LedManager ledManager(LED_BUILTIN, BRIGHTNESS);
 ThermalArrayManager thermalManager(0x68, 0x69, 0x69, Wire, Wire1, DEBUG);
 mmWaveArrayManager mmWaveManager(RADAR1_RX, RADAR1_TX, RADAR2_RX, RADAR2_TX, DEBUG);
 MicManager micManager(0.2, DEBUG);
+DeterrentManager deterrentManager(DETERRENT_PIN, DEBUG);
 
 void disableRadios() {
     esp_bt_controller_mem_release(ESP_BT_MODE_BTDM);
@@ -155,8 +160,9 @@ void setup() {
         Serial.flush();
     }
     micManager.begin();
+    deterrentManager.begin();
     if (DEBUG) {
-        Serial.println("Mic manager initialized.");
+        Serial.println("Mic manager and deterrent manager initialized.");
         Serial.flush();
     }
     
@@ -246,15 +252,23 @@ void uplinkCoreTask(void* p) {
 }
 
 void loop() {
+    deterrentManager.update();
+
     // Sleep Management (Core 0)
-    ledManager.setColor(0, 0, 100); // Blue = sleeping
-    sleepManager.goToSleep();       // Block here until PIR interrupt
-    
+    ledManager.setColor(0, 0, 100);
+    sleepManager.goToSleep();
+
     // --- WAKE UP ---
-    ledManager.setColor(0, 100, 0); // Green = awake
-    
-    // Notify the sensor task (also on Core 0) to start reading
+    ledManager.setColor(0, 100, 0);
+
     if (sensorTaskHandle) {
         xTaskNotifyGive(sensorTaskHandle);
+    }
+
+    deterrentManager.signalUnsureDetection();
+    unsigned long signalDeadline = millis() + kPlaceholderSignalWindowMs;
+    while (deterrentManager.isSignaling() && millis() < signalDeadline) {
+        deterrentManager.update();
+        delay(1);
     }
 }
