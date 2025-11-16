@@ -22,7 +22,7 @@
 #define CPIR 13
 #define RPIR 14
 
-#define DEBUG true
+#define DEBUG false
 
 #define BRIGHTNESS 50  // RGB LED brightness (0-255)
 
@@ -31,7 +31,6 @@
 // const char* WIFI_PASSWORD = "ece449$$";
 // const char* TARGET_ID = "GROUP2_DETER_ESP";
 // unsigned int UDP_PORT = 4210;
-// ------------------------------------
 
 // Thermal I2C pins
 #define T0_SDA 48
@@ -47,12 +46,9 @@
 // ==========================
 
 struct SensorPacket {
-    // --- Store thermal data by value ---
     float thermal_left[64];
     float thermal_center[64];
     float thermal_right[64];
-    // ----------------------------------------
-    
     RadarData r1;
     RadarData r2;
     double micL;
@@ -117,8 +113,6 @@ void setup() {
         Serial.flush();
     }
 
-
-    // --- FIX: Stagger sensor init to prevent power-on reset ---
     // Init sensors
     if (DEBUG) {
         Serial.println("Initializing thermal sensors...");
@@ -165,8 +159,6 @@ void setup() {
         Serial.println("Mic manager initialized.");
         Serial.flush();
     }
-    // --- END FIX ---
-    
     
     // Create the queue and tasks
     if (DEBUG) {
@@ -192,12 +184,10 @@ void sensorCoreTask(void* p) {
         thermalManager.readRotated();
         ThermalReadings thermalData = thermalManager.getObject(); // Get object with pointers
 
-        // --- FIX: Copy data by value to avoid race condition ---
         // Assumes thermal arrays are 64 elements (8x8)
         memcpy(pkt.thermal_left, thermalData.left, sizeof(float) * 64);
         memcpy(pkt.thermal_center, thermalData.center, sizeof(float) * 64);
         memcpy(pkt.thermal_right, thermalData.right, sizeof(float) * 64);
-        // --- END FIX ---
         
         mmWaveManager.update();
         pkt.r1 = mmWaveManager.getRadar1();
@@ -212,18 +202,16 @@ void sensorCoreTask(void* p) {
 
 void uplinkCoreTask(void* p) {
     SensorPacket pkt;
-    // StaticJsonDocument<2048> doc; // This is deprecated
-    JsonDocument doc; // <-- FIX: Use modern ArduinoJson 7 syntax
+    JsonDocument doc;
     for (;;) {
         // Wait for a packet from Core 0
         if (xQueueReceive(packetQueue, &pkt, portMAX_DELAY) != pdTRUE) {
             continue; // Should never happen with portMAX_DELAY
         }
         
-        // --- JSON & Uplink Pipeline (Core 1) ---
+        // --- JSON & Uplink Pipeline (Core 1)
         doc.clear();
 
-        // --- FIX: Read from value arrays and serialize to JsonArray ---
         JsonArray thermal_left = doc["thermal"].to<JsonObject>()["left"].to<JsonArray>();
         for (int i = 0; i < 64; i++) {
             thermal_left.add(pkt.thermal_left[i]);
@@ -238,9 +226,7 @@ void uplinkCoreTask(void* p) {
         for (int i = 0; i < 64; i++) {
             thermal_right.add(pkt.thermal_right[i]);
         }
-        // --- END FIX ---
-        
-        // These keys are from your last version of the code
+
         doc["radar"]["left"]["range"] = pkt.r1.range_cm;
         doc["radar"]["left"]["speed"] = pkt.r1.speed_ms;
         doc["radar"]["left"]["energy"] = pkt.r1.energy;
@@ -260,24 +246,15 @@ void uplinkCoreTask(void* p) {
 }
 
 void loop() {
-    // --- Sleep Management (Core 0) ---
+    // Sleep Management (Core 0)
     ledManager.setColor(0, 0, 100); // Blue = sleeping
     sleepManager.goToSleep();       // Block here until PIR interrupt
     
     // --- WAKE UP ---
-    // sleepManager.configure(); // <-- This was the error, removed it
-    
     ledManager.setColor(0, 100, 0); // Green = awake
     
     // Notify the sensor task (also on Core 0) to start reading
     if (sensorTaskHandle) {
         xTaskNotifyGive(sensorTaskHandle);
     }
-    
-    // --- FIX: Add small delay for Serial ---
-    // Give Core 1 (uplink) time to print before sleeping again
-    delay(100);
-    // ---------------------------------------
-
-    // loop() will now finish and call goToSleep() again
 }
