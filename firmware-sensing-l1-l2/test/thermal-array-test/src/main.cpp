@@ -3,10 +3,10 @@
 #include <Adafruit_AMG88xx.h>
 
 // I2C pins
-#define I2C0_SDA 8
-#define I2C0_SCL 9
-#define I2C1_SDA 6
-#define I2C1_SCL 7
+#define I2C0_SDA 48
+#define I2C0_SCL 47
+#define I2C1_SDA 8
+#define I2C1_SCL 9
 
 // AMG8833 sensor instances
 Adafruit_AMG88xx amgLeft;
