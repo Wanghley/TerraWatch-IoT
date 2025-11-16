@@ -1,11 +1,10 @@
 #include <Arduino.h>
-#include "wifi_manager.h"
 #include "sleep_manager.h"
 #include "led_manager.h"
 #include "thermal_array_manager.h"
 #include "mmWave_array_manager.h"
 #include "mic_manager.h"
-#include "ping_wire.h"
+// #include "ping_wire.h"
 
 // ====== USER CONFIG ======
 #define LPIR 12
@@ -34,10 +33,8 @@ unsigned int UDP_PORT = 4210;
 // ==========================
 
 // Manager objects
-WifiManager wifiManager(WIFI_SSID, WIFI_PASSWORD, DEBUG, IPAddress(0,0,0,0), UDP_PORT, TARGET_ID);
-SleepManager sleepManager(LPIR, CPIR, RPIR);
+SleepManager sleepManager(LPIR, CPIR, RPIR, DEBUG);
 LedManager ledManager(LED_BUILTIN, BRIGHTNESS);
-
 ThermalArrayManager thermalManager(0x68, 0x69, 0x69, Wire, Wire1, DEBUG);
 mmWaveArrayManager mmWaveManager(RADAR1_RX, RADAR1_TX, RADAR2_RX, RADAR2_TX, DEBUG);
 MicManager micManager(0.2, DEBUG);
@@ -46,15 +43,12 @@ void setup() {
     Serial.begin(115200);
     delay(500);
     if (DEBUG) {
-        Serial.println("\n--- Farm Defense System Booting Up ---");
+        Serial.println("\n--- TerraWatch Agronauts L1/L2 Sensing Firmware ---");
     }
 
     // Init LED
     ledManager.begin();
     ledManager.setColor(100, 100, 0); // Yellow = setup start
-
-    // Init Wi-Fi
-    wifiManager.connect();
 
     // Configure sleep
     sleepManager.configure();
@@ -91,7 +85,7 @@ void loop() {
     if (DEBUG) {
         Serial.println("\n--- GOING TO SLEEP ---");
     }
-    ledManager.setColor(0, 0, 0); // Blue = sleep
+    ledManager.setColor(0, 0, 100); // Blue = sleeping
 
     sleepManager.goToSleep();  // Blocking, wake on PIR
 
@@ -102,12 +96,6 @@ void loop() {
     }
 
     // --- CHECK WIFI ---
-    if (!wifiManager.isConnected()) {
-        if (DEBUG) {
-           Serial.println("⚠️ Wi-Fi disconnected. Reconnecting...");
-        }
-        wifiManager.connect();
-    }
 
     // --- 1. READ THERMAL ---
     thermalManager.readRotated();
@@ -161,8 +149,6 @@ void loop() {
     String output;
     serializeJson(doc, output);
     Serial.println(output);
-
-    wifiManager.triggerDeterrenceSystem(10,10,"V1.0","WAN");
 
     if (DEBUG) {
         Serial.println("\n--- DATA SENT ---");
