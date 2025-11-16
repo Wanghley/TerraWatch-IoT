@@ -52,7 +52,8 @@ void SleepManager::configure() {
             break;
         case ESP_SLEEP_WAKEUP_UNDEFINED:
         default:
-            if (_debug) Serial.println("Wake reason: UNDEFINED/OTHER");
+            // This is what you see on a POWERON reset
+            if (_debug) Serial.println("Wake reason: POWERON / UNDEFINED");
             break;
     }
 }
@@ -63,14 +64,10 @@ void SleepManager::goToSleep() {
         Serial.flush();
     }
 
-    // Force known idle state so ext1 isn't armed while a PIR is already HIGH
-    pinMode(_lpir, INPUT_PULLDOWN);
-    pinMode(_cpir, INPUT_PULLDOWN);
-    pinMode(_rpir, INPUT_PULLDOWN);
 
-    // Wait up to 2s for all PIRs to be LOW (avoid immediate wake)
+    // Wait up to 1s for all PIRs to be LOW (avoid immediate wake)
     unsigned long start = millis();
-    while (millis() - start < 2000) {
+    while (millis() - start < 1000) {
         int l = digitalRead(_lpir), c = digitalRead(_cpir), r = digitalRead(_rpir);
         if (l == LOW && c == LOW && r == LOW) break;
         if (_debug) Serial.printf("Waiting for PIR idle: L=%d C=%d R=%d\n", l, c, r);
@@ -82,9 +79,14 @@ void SleepManager::goToSleep() {
     delay(10); // settle after arming
 
     if (_debug) {
-        Serial.println("SleepManager: going to deep sleep (EXT1 enabled)...");
+        Serial.println("SleepManager: going to LIGHT sleep (EXT1 enabled)...");
         Serial.flush();
     }
-    // Use deep sleep so wake cause and EXT1 mask are reliably available on restart
-    esp_deep_sleep_start();
+    
+    // --- THIS IS THE FIX ---
+    // Use light sleep to preserve RAM and running tasks.
+    esp_light_sleep_start();
+    
+    // This was the bug; it causes a full reboot, killing your tasks.
+    // esp_deep_sleep_start(); 
 }
