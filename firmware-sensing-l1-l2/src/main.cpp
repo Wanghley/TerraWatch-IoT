@@ -4,7 +4,9 @@
 #include "thermal_array_manager.h"
 #include "mmWave_array_manager.h"
 #include "mic_manager.h"
-// #include "ping_wire.h"
+#include "esp_wifi.h"
+#include "esp_bt.h"
+#include "esp_bt_main.h"
 
 // ====== USER CONFIG ======
 #define LPIR 12
@@ -13,7 +15,7 @@
 
 #define DEBUG true
 
-#define BRIGHTNESS 5  // RGB LED brightness (0-255)
+#define BRIGHTNESS 50  // RGB LED brightness (0-255)
 const char* WIFI_SSID     = "ECE449deco";
 const char* WIFI_PASSWORD = "ece449$$";
 const char* TARGET_ID = "GROUP2_DETER_ESP";  // the one we want to stop
@@ -39,9 +41,18 @@ ThermalArrayManager thermalManager(0x68, 0x69, 0x69, Wire, Wire1, DEBUG);
 mmWaveArrayManager mmWaveManager(RADAR1_RX, RADAR1_TX, RADAR2_RX, RADAR2_TX, DEBUG);
 MicManager micManager(0.2, DEBUG);
 
+void disableRadios() {
+    esp_bt_controller_mem_release(ESP_BT_MODE_BTDM);
+    esp_bt_controller_disable();
+    esp_wifi_stop();
+    esp_wifi_deinit();
+}
+
 void setup() {
+    disableRadios();
+    delay(100);
     Serial.begin(115200);
-    delay(500);
+    delay(100);
     if (DEBUG) {
         Serial.println("\n--- TerraWatch Agronauts L1/L2 Sensing Firmware ---");
     }
@@ -49,6 +60,9 @@ void setup() {
     // Init LED
     ledManager.begin();
     ledManager.setColor(100, 100, 0); // Yellow = setup start
+
+    // delay for stability
+    delay(100);
 
     // Configure sleep
     sleepManager.configure();
@@ -80,6 +94,47 @@ void setup() {
     }
 }
 
+struct SensorPacket {
+    ThermalReadings thermal;
+    RadarData r1;
+    RadarData r2;
+    double micL;
+    double micR;
+};
+
+QueueHandle_t packetQueue = nullptr;
+TaskHandle_t sensorTaskHandle = nullptr;
+TaskHandle_t uplinkTaskHandle = nullptr;
+
+void sensorCoreTask(void*) {
+    SensorPacket pkt;
+    for (;;) {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        thermalManager.readRotated();
+        pkt.thermal = thermalManager.getObject();
+        mmWaveManager.update();
+        pkt.r1 = mmWaveManager.getRadar1();
+        pkt.r2 = mmWaveManager.getRadar2();
+        micManager.read(pkt.micL, pkt.micR);
+        xQueueOverwrite(packetQueue, &pkt);
+    }
+}
+
+void uplinkCoreTask(void*) {
+    SensorPacket pkt;
+    StaticJsonDocument<2048> doc;
+    for (;;) {
+        if (xQueueReceive(packetQueue, &pkt, portMAX_DELAY) != pdTRUE) {
+            continue;
+        }
+        doc.clear();
+        // rebuild the JSON exactly like the current loop()
+        // ...existing code copied here...
+        serializeJson(doc, Serial);
+        Serial.println();
+    }
+}
+
 void loop() {
     // --- GO TO SLEEP ---
     if (DEBUG) {
@@ -88,6 +143,10 @@ void loop() {
     ledManager.setColor(0, 0, 100); // Blue = sleeping
 
     sleepManager.goToSleep();  // Blocking, wake on PIR
+
+    // For light sleep: re-run configure to print wake reason / EXT1 mask (L/C/R)
+    // configure() already prints the EXT1 mask and raw reads when DEBUG is true.
+    sleepManager.configure();
 
     // --- WOKE UP ---
     ledManager.setColor(0, 100, 0); // Green = awake
