@@ -1,4 +1,5 @@
 #include "thermal_array_manager.h"
+#include "thermal_array_utils.h"
 
 ThermalArrayManager::ThermalArrayManager(uint8_t leftAddr,
                                          uint8_t rightAddr,
@@ -63,9 +64,10 @@ void ThermalArrayManager::readRotated() {
     if (_debug) {
         Serial.println("THERMAL: Rotating pixel data 270° clockwise...");
     }
-    rotate270CW(_pixelsLeft, _rotatedLeft);
-    rotate270CW(_pixelsCenter, _rotatedCenter);
-    rotate270CW(_pixelsRight, _rotatedRight);
+
+    rotateMatrix(_pixelsLeft, _rotatedLeft, MatrixRotation::ROT_180_CW);
+    rotateMatrix(_pixelsCenter, _rotatedCenter, MatrixRotation::ROT_180_CW);
+    rotateMatrix(_pixelsRight, _rotatedRight, MatrixRotation::ROT_180_CW);
 }
 
 ThermalReadings ThermalArrayManager::getObject() {
@@ -97,15 +99,4 @@ String ThermalArrayManager::getJSON() {
     String output;
     serializeJson(doc, output);
     return output;
-}
-
-void ThermalArrayManager::rotate270CW(float* src, float* dst) {
-    if (_debug) {
-        Serial.println("THERMAL: Rotating 270° clockwise...");
-    }
-    for (int r = 0; r < 8; r++) {
-        for (int c = 0; c < 8; c++) {
-            dst[c * 8 + (7 - r)] = src[r * 8 + c];
-        }
-    }
 }
