@@ -59,12 +59,32 @@ void SleepManager::configure() {
 
 void SleepManager::goToSleep() {
     if (_debug) {
-        Serial.println("SleepManager: going to light sleep (EXT1 enabled)...");
+        Serial.println("SleepManager: arming EXT1 wakeup (pull-down + settle)...");
         Serial.flush();
     }
+
+    // Force known idle state so ext1 isn't armed while a PIR is already HIGH
+    pinMode(_lpir, INPUT_PULLDOWN);
+    pinMode(_cpir, INPUT_PULLDOWN);
+    pinMode(_rpir, INPUT_PULLDOWN);
+
+    // Wait up to 2s for all PIRs to be LOW (avoid immediate wake)
+    unsigned long start = millis();
+    while (millis() - start < 2000) {
+        int l = digitalRead(_lpir), c = digitalRead(_cpir), r = digitalRead(_rpir);
+        if (l == LOW && c == LOW && r == LOW) break;
+        if (_debug) Serial.printf("Waiting for PIR idle: L=%d C=%d R=%d\n", l, c, r);
+        delay(50);
+    }
+
     uint64_t wakeMask = (1ULL << _lpir) | (1ULL << _cpir) | (1ULL << _rpir);
     esp_sleep_enable_ext1_wakeup(wakeMask, ESP_EXT1_WAKEUP_ANY_HIGH);
-    delay(100); // allow pins to settle
-    // light sleep
-    esp_light_sleep_start();
+    delay(10); // settle after arming
+
+    if (_debug) {
+        Serial.println("SleepManager: going to deep sleep (EXT1 enabled)...");
+        Serial.flush();
+    }
+    // Use deep sleep so wake cause and EXT1 mask are reliably available on restart
+    esp_deep_sleep_start();
 }
