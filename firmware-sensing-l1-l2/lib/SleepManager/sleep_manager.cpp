@@ -5,19 +5,18 @@ SleepManager::SleepManager(int lpir, int cpir, int rpir, bool debug)
     : _lpir(lpir), _cpir(cpir), _rpir(rpir), _wakeMask(0), _debug(debug) {}
 
 void SleepManager::configure() {
+    // initialize serial for debug if requested
+    if (_debug && !Serial) {
+        Serial.begin(115200);
+        delay(200);
+    }
+
     pinMode(_lpir, INPUT);
     pinMode(_cpir, INPUT);
     pinMode(_rpir, INPUT);
-    if (_debug) {
-        Serial.begin(115200);
-        delay(200);
-        Serial.println("SleepManager: configure()");
-    }
 
     esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
-    if (_debug) {
-        Serial.printf("wake cause code: %d\n", cause);
-    }
+    if (_debug) Serial.printf("wake cause code: %d\n", cause);
 
     switch (cause) {
         case ESP_SLEEP_WAKEUP_EXT1: {
@@ -29,18 +28,27 @@ void SleepManager::configure() {
             bool c = (mask & (1ULL << _cpir)) != 0;
             bool r = (mask & (1ULL << _rpir)) != 0;
             if (_debug) {
-                Serial.printf("EXT1 mask bits: L=%d C=%d R=%d\n", l, c, r);
+                Serial.printf("Wake reason: EXT1 (mask=0x%llx)\n", mask);
+                Serial.printf("  -> LPIR triggered: %d\n", l);
+                Serial.printf("  -> CPIR triggered: %d\n", c);
+                Serial.printf("  -> RPIR triggered: %d\n", r);
+                Serial.printf("Raw reads: L=%d C=%d R=%d\n",
+                              digitalRead(_lpir), digitalRead(_cpir), digitalRead(_rpir));
             }
             break;
         }
+        case ESP_SLEEP_WAKEUP_EXT0:
+            if (_debug) {
+                Serial.println("Wake reason: EXT0");
+                Serial.printf("Raw reads: L=%d C=%d R=%d\n",
+                              digitalRead(_lpir), digitalRead(_cpir), digitalRead(_rpir));
+            }
+            break;
         case ESP_SLEEP_WAKEUP_TIMER:
             if (_debug) Serial.println("Wake reason: TIMER");
             break;
         case ESP_SLEEP_WAKEUP_TOUCHPAD:
             if (_debug) Serial.println("Wake reason: TOUCHPAD");
-            break;
-        case ESP_SLEEP_WAKEUP_EXT0:
-            if (_debug) Serial.println("Wake reason: EXT0");
             break;
         case ESP_SLEEP_WAKEUP_UNDEFINED:
         default:
