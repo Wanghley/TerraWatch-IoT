@@ -1,14 +1,11 @@
 #include <Arduino.h>
-
-// --- Added Missing Headers ---
 #include "ArduinoJson.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
-#include <string.h> // <-- ADDED for memcpy
-// -----------------------------
+#include <string.h> // For memcpy
 
-#include "sleep_manager.h"
+// Note: sleep_manager.h is NOT included
 #include "led_manager.h"
 #include "thermal_array_manager.h"
 #include "mmWave_array_manager.h"
@@ -16,31 +13,18 @@
 #include "esp_wifi.h"
 #include "esp_bt.h"
 #include "esp_bt_main.h"
-#include "deterrent_manager.h"
 
 // ====== USER CONFIG ======
-#define LPIR 12
-#define CPIR 13
-#define RPIR 14
+// --- Sleep/PIR pins removed ---
 
-#define DEBUG true
-
-#define BRIGHTNESS 50  // RGB LED brightness (0-255)
-#define kPlaceholderSignalWindowMs 60  // Signal window duration in milliseconds
-
-// --- Removed unused WiFi/UDP vars ---
-// const char* WIFI_SSID     = "ECE449deco";
-// const char* WIFI_PASSWORD = "ece449$$";
-// const char* TARGET_ID = "GROUP2_DETER_ESP";
-// unsigned int UDP_PORT = 4210;
+#define DEBUG false // Keep debug off for max speed
+#define BRIGHTNESS 50
 
 // Thermal I2C pins
 #define T0_SDA 48
 #define T0_SCL 47
 #define T1_SDA 8
 #define T1_SCL 9
-
-#define DETERRENT_PIN 36
 
 // mmWave pins
 #define RADAR1_RX 16 // LEFT
@@ -66,13 +50,15 @@ QueueHandle_t packetQueue = nullptr;
 TaskHandle_t sensorTaskHandle = nullptr;
 TaskHandle_t uplinkTaskHandle = nullptr;
 
+// Semaphore for sync
+SemaphoreHandle_t uplinkDoneSemaphore = nullptr;
+
 // Manager objects
-SleepManager sleepManager(LPIR, CPIR, RPIR, DEBUG);
+// Note: SleepManager is NOT created
 LedManager ledManager(LED_BUILTIN, BRIGHTNESS);
 ThermalArrayManager thermalManager(0x68, 0x69, 0x69, Wire, Wire1, DEBUG);
 mmWaveArrayManager mmWaveManager(RADAR1_RX, RADAR1_TX, RADAR2_RX, RADAR2_TX, DEBUG);
 MicManager micManager(0.2, DEBUG);
-DeterrentManager deterrentManager(DETERRENT_PIN, DEBUG);
 
 void disableRadios() {
     esp_bt_controller_mem_release(ESP_BT_MODE_BTDM);
@@ -84,100 +70,37 @@ void disableRadios() {
 void setup() {
     disableRadios();
     delay(100);
-    Serial.begin(115200);
+    Serial.begin(921600); // High-speed baud rate
 
-    // --- FIX: Wait for Serial on S3 native USB ---
-    // Give 3 seconds to connect the Serial monitor
+    // Wait for Serial
     unsigned long start = millis();
     while (!Serial && (millis() - start < 3000)) {
         delay(100);
     }
-    // --------------------------------------------
-
-    delay(100);
-    if (DEBUG) {
-        Serial.println("\n--- TerraWatch Agronauts L1/L2 Sensing Firmware ---");
-        Serial.flush(); // Force print before next step
-    }
-
-    // Init LED
+    
     ledManager.begin();
-    ledManager.setColor(100, 100, 0); // Yellow = setup start
+    ledManager.setColor(100, 0, 100); // Purple = Booting data collector
 
-    // delay for stability
-    delay(100);
-
-    // Configure sleep
-    if (DEBUG) {
-        Serial.println("Configuring sleep...");
-        Serial.flush();
-    }
-    sleepManager.configure();
-    if (DEBUG) {
-        Serial.println("Sleep configured.");
-        Serial.flush();
-    }
-
-    // Init sensors
-    if (DEBUG) {
-        Serial.println("Initializing thermal sensors...");
-        Serial.flush();
-    }
+    // --- Stagger sensor init ---
     if (!thermalManager.begin(T0_SDA, T0_SCL, T1_SDA, T1_SCL)) {
-        if (DEBUG) {
-            Serial.println("⚠️ Thermal sensors failed!");
-            Serial.flush();
-        }
-    } else {
-        if (DEBUG) {
-            Serial.println("Thermal sensors initialized.");
-            Serial.flush();
-        }
+         ledManager.setColor(100, 0, 0); // Red = Error
+         while(1) delay(100);
     }
-
-    delay(250); // Stagger init
-
-    if (DEBUG) {
-        Serial.println("Initializing mmWave radars...");
-        Serial.flush();
-    }
+    delay(250); 
     if (!mmWaveManager.begin()) {
-        if (DEBUG) {
-            Serial.println("⚠️ mmWave radars failed!");
-            Serial.flush();
-        }
-    } else {
-        if (DEBUG) {
-            Serial.println("mmWave radars initialized.");
-            Serial.flush();
-        }
+         ledManager.setColor(100, 0, 0); // Red = Error
+         while(1) delay(100);
     }
-
-    delay(250); // Stagger init
-
-    if (DEBUG) {
-        Serial.println("Initializing mic manager...");
-        Serial.flush();
-    }
+    delay(250); 
     micManager.begin();
-    deterrentManager.begin();
-    if (DEBUG) {
-        Serial.println("Mic manager and deterrent manager initialized.");
-        Serial.flush();
-    }
     
     // Create the queue and tasks
-    if (DEBUG) {
-        Serial.println("Creating FreeRTOS tasks...");
-        Serial.flush();
-    }
     packetQueue = xQueueCreate(1, sizeof(SensorPacket));
+    uplinkDoneSemaphore = xSemaphoreCreateBinary();
     xTaskCreatePinnedToCore(sensorCoreTask, "sensors", 8192, nullptr, 2, &sensorTaskHandle, 0); // Core 0, Prio 2
     xTaskCreatePinnedToCore(uplinkCoreTask, "uplink", 6144, nullptr, 1, &uplinkTaskHandle, 1); // Core 1, Prio 1
-    if (DEBUG) {
-        Serial.println("Setup complete. Handing over to tasks.");
-        Serial.flush();
-    }
+    
+    ledManager.setColor(0, 0, 100); // Blue = Ready to sample
 }
 
 void sensorCoreTask(void* p) {
@@ -188,9 +111,7 @@ void sensorCoreTask(void* p) {
         
         // --- Sensor Read Pipeline (Core 0) ---
         thermalManager.readRotated();
-        ThermalReadings thermalData = thermalManager.getObject(); // Get object with pointers
-
-        // Assumes thermal arrays are 64 elements (8x8)
+        ThermalReadings thermalData = thermalManager.getObject(); 
         memcpy(pkt.thermal_left, thermalData.left, sizeof(float) * 64);
         memcpy(pkt.thermal_center, thermalData.center, sizeof(float) * 64);
         memcpy(pkt.thermal_right, thermalData.right, sizeof(float) * 64);
@@ -201,38 +122,32 @@ void sensorCoreTask(void* p) {
         
         micManager.read(pkt.micL, pkt.micR);
         
-        // Send to Core 1 (overwrites if Core 1 is still busy)
+        // Send to Core 1
         xQueueOverwrite(packetQueue, &pkt);
     }
 }
 
 void uplinkCoreTask(void* p) {
     SensorPacket pkt;
-    JsonDocument doc;
+    JsonDocument doc; 
     for (;;) {
         // Wait for a packet from Core 0
         if (xQueueReceive(packetQueue, &pkt, portMAX_DELAY) != pdTRUE) {
-            continue; // Should never happen with portMAX_DELAY
+            continue;
         }
         
-        // --- JSON & Uplink Pipeline (Core 1)
+        // --- JSON & Uplink Pipeline (Core 1) ---
         doc.clear();
 
         JsonArray thermal_left = doc["thermal"].to<JsonObject>()["left"].to<JsonArray>();
-        for (int i = 0; i < 64; i++) {
-            thermal_left.add(pkt.thermal_left[i]);
-        }
+        for (int i = 0; i < 64; i++) thermal_left.add(pkt.thermal_left[i]);
         
         JsonArray thermal_center = doc["thermal"]["center"].to<JsonArray>();
-        for (int i = 0; i < 64; i++) {
-            thermal_center.add(pkt.thermal_center[i]);
-        }
+        for (int i = 0; i < 64; i++) thermal_center.add(pkt.thermal_center[i]);
 
         JsonArray thermal_right = doc["thermal"]["right"].to<JsonArray>();
-        for (int i = 0; i < 64; i++) {
-            thermal_right.add(pkt.thermal_right[i]);
-        }
-
+        for (int i = 0; i < 64; i++) thermal_right.add(pkt.thermal_right[i]);
+        
         doc["radar"]["left"]["range"] = pkt.r1.range_cm;
         doc["radar"]["left"]["speed"] = pkt.r1.speed_ms;
         doc["radar"]["left"]["energy"] = pkt.r1.energy;
@@ -248,27 +163,23 @@ void uplinkCoreTask(void* p) {
         
         serializeJson(doc, Serial);
         Serial.println();
+        Serial.flush(); // Force send the data
+
+        // Signal Core 0 that printing is done
+        xSemaphoreGive(uplinkDoneSemaphore);
     }
 }
 
 void loop() {
-    deterrentManager.update();
-
-    // Sleep Management (Core 0)
-    ledManager.setColor(0, 0, 100);
-    sleepManager.goToSleep();
-
-    // --- WAKE UP ---
-    ledManager.setColor(0, 100, 0);
-
+    // --- Continuous Sampling Loop (Core 0) ---
+    
+    // Notify the sensor task to start reading
     if (sensorTaskHandle) {
         xTaskNotifyGive(sensorTaskHandle);
     }
+    
+    // Wait for Core 1 to signal that it has finished printing.
+    xSemaphoreTake(uplinkDoneSemaphore, portMAX_DELAY);
 
-    deterrentManager.signalUnsureDetection();
-    unsigned long signalDeadline = millis() + kPlaceholderSignalWindowMs;
-    while (deterrentManager.isSignaling() && millis() < signalDeadline) {
-        deterrentManager.update();
-        delay(1);
-    }
+    // loop() will now finish and immediately run again
 }

@@ -64,19 +64,28 @@ bool mmWaveArrayManager::begin() {
 }
 
 void mmWaveArrayManager::updateRadarData(DFRobot_C4001_UART &radar, RadarData &data) {
+    // Single call to getTargetNumber() - this caches all target data internally
     data.numTargets = radar.getTargetNumber();
+    
     if (data.numTargets > 0) {
+        // These calls are FAST - they just return cached values from getTargetNumber()
         data.range_cm = radar.getTargetRange();
         data.speed_ms = radar.getTargetSpeed();
         data.energy = radar.getTargetEnergy();
         data.lastDetection = millis();
         data.isValid = (data.energy >= MIN_ENERGY_THRESHOLD);
     } else {
+        // No target detected
+        data.range_cm = 0;
+        data.speed_ms = 0;
+        data.energy = 0;
         data.isValid = false;
     }
 }
 
 void mmWaveArrayManager::update() {
+    // Read both radars - they use different UART ports so this happens in parallel
+    // Radar1 reads while Radar2 reads (hardware level parallelism)
     updateRadarData(_radar1, _radar1Data);
     updateRadarData(_radar2, _radar2Data);
 }
