@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include <ArduinoJson.h> // <-- ADDED
+#include <ArduinoJson.h>
 #include <WiFi.h>        // <-- ADDED (for IPAddress)
 
 #include "wifi_manager.h"
@@ -29,10 +29,10 @@ unsigned int UDP_PORT = 4210;
 #define T1_SDA 8
 #define T1_SCL 9
 
-#define RADAR1_RX 16
-#define RADAR1_TX 10
-#define RADAR2_RX 17
-#define RADAR2_TX 18
+#define RADAR1_RX 10
+#define RADAR1_TX 16
+#define RADAR2_RX 18
+#define RADAR2_TX 17
 // ==========================
 
 // Manager objects
@@ -54,9 +54,15 @@ void setup() {
     }
 
     ledManager.begin();
-    ledManager.setColor(100, 100, 0);
 
-    wifiManager.connect();
+    // bool wifiConnected = wifiManager.connect();
+    // if (wifiConnected) {
+    //     ledManager.setColor(0, 100, 0); // Green when online
+    // } else {
+    //     if (DEBUG) Serial.println("⚠️ Wi-Fi connection unavailable, continuing without Wi-Fi.");
+    //     ledManager.setColor(100, 0, 0); // Red when offline
+    // }
+
     sleepManager.configure();
 
     if (!thermalManager.begin(T0_SDA, T0_SCL, T1_SDA, T1_SCL)) {
@@ -91,14 +97,24 @@ void loop() {
     sleepManager.goToSleep();
 
     // --- WOKE UP ---
-    ledManager.setColor(0, 100, 0);
+    // if (wifiManager.isConnected()) {
+    //     ledManager.setColor(0, 100, 0);
+    // } else {
+    //     ledManager.setColor(100, 0, 0);
+    // }
     if (DEBUG) Serial.println("\n--- WOKE UP ---");
 
     // --- CHECK WIFI ---
-    if (!wifiManager.isConnected()) {
-        if (DEBUG) Serial.println("⚠️ Wi-Fi disconnected. Reconnecting...");
-        wifiManager.connect();
-    }
+    // if (!wifiManager.isConnected()) {
+    //     if (DEBUG) Serial.println("⚠️ Wi-Fi disconnected. Reconnecting...");
+    //     ledManager.setColor(0, 0, 0);
+    //     bool reconnected = wifiManager.connect();
+    //     if (reconnected) {
+    //         ledManager.setColor(0, 100, 0);
+    //     } else {
+    //         ledManager.setColor(100, 0, 0);
+    //     }
+    // }
 
     // --- 1. READ THERMAL ---
     thermalManager.readRotated();
@@ -141,7 +157,7 @@ void loop() {
             ledManager.setColor(255, 0, 0); // Red for animal
             
             // TRIGGER DETERRENCE SYSTEM
-            wifiManager.triggerDeterrenceSystem(10, 10, "V1.0", "ML");
+            // wifiManager.triggerDeterrenceSystem(10, 10, "V1.0", "ML");
             
         } else if (prediction == 2) {
             if (DEBUG) {
