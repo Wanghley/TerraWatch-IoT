@@ -4,9 +4,9 @@
 #include <math.h>
 
 // I2S pins
-#define I2S_SCK  4
-#define I2S_WS   5
-#define I2S_SD   20  // Single SD line shared by both mics (stereo)
+#define I2S_SCK  5
+#define I2S_WS   4
+#define I2S_SD   21  // Single SD line shared by both mics (stereo)
 
 // I2S port
 #define I2S_PORT I2S_NUM_0

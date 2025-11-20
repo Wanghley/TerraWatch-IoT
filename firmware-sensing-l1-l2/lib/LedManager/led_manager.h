@@ -14,4 +14,10 @@ public:
 private:
     int _pin;
     uint8_t _brightness;
+    uint8_t _targetR;
+    uint8_t _targetG;
+    uint8_t _targetB;
+    bool _initialized;
+
+    void writeColor();
 };
