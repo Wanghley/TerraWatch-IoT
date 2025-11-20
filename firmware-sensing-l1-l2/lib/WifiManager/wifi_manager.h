@@ -10,7 +10,7 @@ public:
     WifiManager(const char* ssid, const char* password, bool debug = false, IPAddress staticIP = IPAddress(0,0,0,0), unsigned int udpPort = 4210, const char* targetId = "GROUP2_DETER_ESP");
 
     // Main connection function (blocking)
-    void connect();
+    bool connect();
 
     // Quick check to see if we are still connected
     bool isConnected();

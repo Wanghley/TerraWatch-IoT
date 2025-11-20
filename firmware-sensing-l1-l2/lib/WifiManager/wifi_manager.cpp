@@ -41,7 +41,7 @@ void WifiManager::handleWiFiEvent(WiFiEvent_t event) {
 }
 
 
-void WifiManager::connect() {
+bool WifiManager::connect() {
   _wifiConnected = false;
   WiFi.mode(WIFI_STA);
   WiFi.onEvent(handleWiFiEvent); // Register our static event handler
@@ -64,15 +64,17 @@ void WifiManager::connect() {
     }
 
     identifyIP();
-    
+
     // THIS IS THE KEY: Enable Wi-Fi modem sleep.
     // This keeps the connection alive during light sleep.
     WiFi.setSleep(true);
-    
+
+    return true;
   } else {
     if (_debug) {
       Serial.println("\n⚠️ WiFi connection failed on startup.");
     }
+    return false;
   }
 }
 
@@ -176,6 +178,9 @@ bool WifiManager::triggerDeterrenceSystem(float probability, float threshold, co
     Serial.print("Triggering deterrence system with payload: ");
     Serial.println(jsonPayload);
   }
+
+  Serial.println("Connecting to deterrence system at " + _ipAddress.toString() + "...");
+  _wifiClient.setTimeout(5000);  // Set a timeout for the connection
 
   if (_wifiClient.connect(_ipAddress, 80)) {
     _wifiClient.println("POST " + url + " HTTP/1.1");
