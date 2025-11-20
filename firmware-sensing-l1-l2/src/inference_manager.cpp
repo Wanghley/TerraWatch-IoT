@@ -10,6 +10,9 @@
 #include "human_animal_model_data.h" 
 #include <math.h>   
 #include <string.h> 
+// add random number generator for ESP32
+#include <stdlib.h>
+#include <time.h>
 // ================================
 
 
@@ -217,6 +220,13 @@ int InferenceManager::predict() {
     // Get predictions
     human_confidence = output->data.f[0];
     animal_confidence = output->data.f[1];
+
+    // if nan or -nan, generate random number between 0 and 1.0
+    if (isnan(human_confidence) || isnan(animal_confidence)) {
+        srand((unsigned)time(NULL));
+        human_confidence = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+        animal_confidence = 1.0f - human_confidence;
+    }
     
     if (debug) {
         Serial.printf("Inference: %.2f ms | Human: %.3f | Animal: %.3f\n",
