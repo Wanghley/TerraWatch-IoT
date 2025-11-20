@@ -7,7 +7,7 @@ pkg load instrument-control   % Required for serial support in Octave
 % -------------------------------
 % Serial Port Settings
 % -------------------------------
-port = "/dev/cu.usbmodem5A450483901";  % ← change to your serial device
+port = "COM6";  % ← change to your serial device
 baud = 115200;
 
 % Open serial port
