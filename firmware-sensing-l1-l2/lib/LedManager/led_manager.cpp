@@ -2,29 +2,49 @@
 
 // Constructor
 LedManager::LedManager(int pin, uint8_t brightness)
-  : _pin(pin), _brightness(brightness) {
+  : _pin(pin), _brightness(brightness),
+    _targetR(255), _targetG(255), _targetB(255),
+    _initialized(false) {
 }
 
 void LedManager::begin() {
-    // Initialize the LED to off
-    // We use neopixelWrite, a built-in helper for the ESP32-S3
+    if (_initialized) {
+        return;
+    }
+    pinMode(_pin, OUTPUT);
+    _initialized = true;
     setOff();
 }
 
 void LedManager::setBrightness(uint8_t brightness) {
+    if (_brightness == brightness) {
+        return;
+    }
     _brightness = brightness;
+    writeColor();
 }
 
 void LedManager::setColor(uint8_t r, uint8_t g, uint8_t b) {
-    // Scale brightness (this is your logic, moved here)
-    uint8_t scaled_r = (r * _brightness) / 255;
-    uint8_t scaled_g = (g * _brightness) / 255;
-    uint8_t scaled_b = (b * _brightness) / 255;
-    
-    // neopixelWrite is a helper for the onboard S3 LED
+    if (_targetR == r && _targetG == g && _targetB == b) {
+        return;
+    }
+    _targetR = r;
+    _targetG = g;
+    _targetB = b;
+    writeColor();
+}
+
+void LedManager::writeColor() {
+    if (!_initialized) {
+        return;
+    }
+    uint8_t scaled_r = (_targetR * _brightness) / 255;
+    uint8_t scaled_g = (_targetG * _brightness) / 255;
+    uint8_t scaled_b = (_targetB * _brightness) / 255;
+
     neopixelWrite(_pin, scaled_r, scaled_g, scaled_b);
 }
 
 void LedManager::setOff() {
-    neopixelWrite(_pin, 0, 0, 0);
+    setColor(0, 0, 0);
 }
