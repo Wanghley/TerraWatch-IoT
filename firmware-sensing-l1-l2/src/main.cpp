@@ -5,6 +5,7 @@
 #include "freertos/queue.h"
 #include <string.h>
 
+#include "shared_types.h"
 #include "sleep_manager.h"
 #include "led_manager.h"
 #include "thermal_array_manager.h"
@@ -36,25 +37,6 @@
 #define RADAR1_TX 16
 #define RADAR2_RX 18
 #define RADAR2_TX 17
-
-// ====== DATA STRUCTURES ======
-struct RadarReading {
-    float range_cm;
-    float speed_ms;
-    float energy;
-    double lastDetection;
-    bool isValid;
-};
-
-struct SensorPacket {
-    float thermal_left[64];
-    float thermal_center[64];
-    float thermal_right[64];
-    RadarReading r1;
-    RadarReading r2;
-    double micL;
-    double micR;
-};
 
 // ====== GLOBAL VARIABLES ======
 QueueHandle_t packetQueue = nullptr;
