@@ -2,14 +2,11 @@
 #define PREDICTOR_H
 
 #include <Arduino.h>
-#include "shared_types.h" // Access to SensorPacket
+#include "shared_types.h" 
 #include <TensorFlowLite_ESP32.h>
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-
-// Include your model data
-#include "model.h" 
 
 class Predictor {
 public:

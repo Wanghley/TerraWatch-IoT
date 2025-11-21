@@ -1,4 +1,5 @@
 #include "predictor.h"
+#include "model.h"
 #include "normalization_values.h"
 
 bool Predictor::begin() {
