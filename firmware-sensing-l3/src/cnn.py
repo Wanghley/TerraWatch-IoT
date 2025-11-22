@@ -64,7 +64,8 @@ def capture_frame():
         
         # Add input and processing options
         # ffmpeg's filter parser requires comma to be escaped as \, even in list format
-        filter_expr = f"select=gte(n\\,{last_frame_idx})"
+        # Chain filters: select the last frame, flip it vertically, then decrease brightness by 15%
+        filter_expr = f"select=gte(n\\,{last_frame_idx}),vflip,eq=brightness=-0.15"
         cmd_capture.extend([
             "-i", VIDEO_DEVICE,
             "-vframes", str(num_frames),  # Process num_frames to allow autoexposure

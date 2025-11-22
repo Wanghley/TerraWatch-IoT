@@ -17,8 +17,15 @@ import time
 import signal
 import sys
 from pathlib import Path
+from datetime import datetime
+import shutil
 import wiringpi
 import cnn
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
 
 # GPIO Configuration (wiringPi numbering)
 GPIO_INPUT_PIN = 2  # wiringPi pin 2 (BCM GPIO 27, physical pin 13)
@@ -29,6 +36,8 @@ DEBOUNCE_TIME = 0.02  # Minimum seconds between triggers
 # Path to CNN script
 SCRIPT_DIR = Path(__file__).parent
 CNN_SCRIPT = SCRIPT_DIR / "cnn.py"
+RESULTS_DIR = SCRIPT_DIR.parent / "results"
+CAPTURE_OUTPUT = SCRIPT_DIR / "output.jpg"
 
 # Global variables
 last_trigger_time = 0
@@ -95,12 +104,45 @@ def get_latest_results_file():
     return max(result_files, key=lambda p: p.stat().st_mtime)
 
 
+def save_event1_frame():
+    """Save the captured frame to results directory with event1 prefix and update output.jpg."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # Ensure results directory exists
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    
+    # Source is the captured frame (YOLO_INPUT)
+    source_frame = cnn.YOLO_INPUT
+    
+    if not source_frame.exists():
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Error: Source frame not found at {source_frame}")
+        return False
+    
+    try:
+        # Save to results with event1 suffix
+        event1_image = RESULTS_DIR / f"{timestamp}_event1.jpg"
+        shutil.copy(source_frame, event1_image)
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Saved Event 1 frame: {event1_image.name}")
+        
+        # Update output.jpg to match
+        shutil.copy(source_frame, CAPTURE_OUTPUT)
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Updated output.jpg")
+        return True
+    except Exception as e:
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Error saving Event 1 frame: {e}")
+        return False
+
+
 def capture_frame_only():
     """Capture a frame from the camera without running CNN inference."""
     print(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Event 1 detected - Capturing frame only...")
     try:
         if cnn.capture_frame():
             print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Frame captured successfully")
+            # Trigger GPIO output (always for Event 1)
+            trigger_gpio_output(100)
+            # Save frame to results with event1 prefix and update output.jpg
+            save_event1_frame()
             return True
         else:
             print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Frame capture failed")
@@ -119,6 +161,53 @@ def trigger_gpio_output(duration_ms=100):
         print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] GPIO output pin {GPIO_OUTPUT_PIN} set HIGH for {duration_ms}ms")
     except Exception as e:
         print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Error controlling GPIO output: {e}")
+
+
+def save_event2_result():
+    """Save the CNN-processed result image to results directory with event2 prefix and update output.jpg."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # Ensure results directory exists
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    
+    # Source is the CNN result image (YOLO_RESULT)
+    source_result = cnn.YOLO_RESULT
+    
+    if not source_result.exists():
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Error: CNN result image not found at {source_result}")
+        return False
+    
+    try:
+        # Save to results with event2 suffix (keep as PNG)
+        event2_image = RESULTS_DIR / f"{timestamp}_event2.png"
+        shutil.copy(source_result, event2_image)
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Saved Event 2 result: {event2_image.name}")
+        
+        # Update output.jpg - convert PNG to JPG if PIL is available, otherwise just copy
+        if PIL_AVAILABLE:
+            try:
+                img = Image.open(source_result)
+                # Convert RGBA to RGB if necessary (PNG might have alpha channel)
+                if img.mode == 'RGBA':
+                    rgb_img = Image.new('RGB', img.size, (255, 255, 255))
+                    rgb_img.paste(img, mask=img.split()[3])  # Use alpha channel as mask
+                    img = rgb_img
+                elif img.mode != 'RGB':
+                    img = img.convert('RGB')
+                img.save(CAPTURE_OUTPUT, 'JPEG', quality=95)
+                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Updated output.jpg (converted from PNG)")
+            except Exception as e:
+                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Warning: Could not convert PNG to JPG: {e}, copying PNG instead")
+                shutil.copy(source_result, CAPTURE_OUTPUT.with_suffix('.png'))
+                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Updated output.png")
+        else:
+            # PIL not available, just copy the PNG
+            shutil.copy(source_result, CAPTURE_OUTPUT.with_suffix('.png'))
+            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Updated output.png (PIL not available for conversion)")
+        return True
+    except Exception as e:
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Error saving Event 2 result: {e}")
+        return False
 
 
 def trigger_cnn():
@@ -159,6 +248,9 @@ def trigger_cnn():
             print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Animal Detected")
             # Trigger GPIO output pin HIGH for 100ms
             trigger_gpio_output(100)
+        
+        # Save CNN result to results with event2 prefix and update output.jpg (after trigger_gpio_output)
+        save_event2_result()
         
         print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] CNN inference completed")
         return animal_detected
