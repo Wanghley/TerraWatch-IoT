@@ -30,7 +30,7 @@ RTC_DATA_ATTR float last_smooth_prob = 0.0f;
 RTC_DATA_ATTR int consecutive_positives = 0;
 
 // OUTPUT SMOOTHING: Exponential moving average to reduce jitter
-const float OUTPUT_SMOOTHING = 0.3f; // 0.0-1.0, higher = less smoothing
+const float OUTPUT_SMOOTHING = 0.7f; // 0.0-1.0, higher = less smoothing
 
 // WARMUP: Initial iterations to let buffer stabilize
 const int WARMUP_ITERATIONS = SEQ_LEN; // 198 frames at 10ms each = ~2 seconds
