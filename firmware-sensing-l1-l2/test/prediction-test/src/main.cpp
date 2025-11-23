@@ -21,13 +21,16 @@ const int SEQ_LEN = 198;
 const int NUM_FEATURES = 200;
 
 // HYSTERESIS: Prevents flickering. 
-const float THRESHOLD_TRIGGER = 0.50f;
+const float THRESHOLD_TRIGGER = 0.10f; // <--- DECISION THRESHOLD (Adjust as needed)
 const float THRESHOLD_RESET   = 0.30f;
-bool alarm_active = false;
+
+// PERSISTENT STATE (Survives Deep Sleep)
+RTC_DATA_ATTR bool alarm_active = false;
+RTC_DATA_ATTR float last_smooth_prob = 0.0f;
+RTC_DATA_ATTR int consecutive_positives = 0;
 
 // OUTPUT SMOOTHING: Exponential moving average to reduce jitter
 const float OUTPUT_SMOOTHING = 0.3f; // 0.0-1.0, higher = less smoothing
-float last_smooth_prob = 0.0f;
 
 // WARMUP: Initial iterations to let buffer stabilize
 const int WARMUP_ITERATIONS = SEQ_LEN; // 198 frames at 10ms each = ~2 seconds
@@ -210,16 +213,27 @@ void loop() {
 
   unsigned long duration = millis() - t_start;
 
-  // --- F. APPLY HYSTERESIS ---
-  if (!alarm_active && smooth_prob >= THRESHOLD_TRIGGER) {
+  // if > THRE
+
+  // --- F. APPLY HYSTERESIS & CONSECUTIVE TRIGGER ---
+  bool is_above_threshold = (smooth_prob >= THRESHOLD_TRIGGER);
+
+  if (is_above_threshold) {
+      consecutive_positives++;
+  } else {
+      consecutive_positives = 0;
+  }
+
+  if (!alarm_active && consecutive_positives >= 2) {
       alarm_active = true;
-      Serial.printf("🚨 ALARM TRIGGERED | Prob: %.3f | Time: %lums\n", smooth_prob, duration);
+      Serial.printf("🚨 ALARM TRIGGERED (2x Positive) | Prob: %.3f | Time: %lums\n", smooth_prob, duration);
   } else if (alarm_active && smooth_prob <= THRESHOLD_RESET) {
       alarm_active = false;
+      consecutive_positives = 0; // Reset counter
       Serial.printf("✓ Alarm Reset | Prob: %.3f | Time: %lums\n", smooth_prob, duration);
   } else {
-      Serial.printf("Prob: %.3f | Smooth: %.3f | State: %s | Time: %lums\n", 
-                    prob, smooth_prob, alarm_active ? "ON" : "OFF", duration);
+      Serial.printf("Prob: %.3f | Smooth: %.3f | Cons: %d | State: %s | Time: %lums\n", 
+                    prob, smooth_prob, consecutive_positives, alarm_active ? "ON" : "OFF", duration);
   }
   
   iteration_count++;
