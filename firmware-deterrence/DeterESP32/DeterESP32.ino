@@ -192,18 +192,98 @@ void loop() {
 
   Serial.println("Client connected");
 
-  // Wait for header
-  while (!client.available()) delay(1);
+  // Wait for header with timeout
+  unsigned long timeout = millis();
+  while (!client.available()) {
+    if (millis() - timeout > 5000) {
+      Serial.println("Timeout waiting for request");
+      client.stop();
+      return;
+    }
+    delay(1);
+  }
 
-  
+  // Read request line
   String req = client.readStringUntil('\r');
+  client.read(); // consume the \n after \r
   Serial.println("Request:");
   Serial.println(req);
 
-  // Read full header until blank line
+  // Parse headers
+  int contentLength = 0;
+  String contentType = "";
+  String headers = "";
+  
   while (client.available()) {
     String line = client.readStringUntil('\r');
-    if (line == "\n" || line == "\r\n") break;
+    client.read(); // consume the \n after \r
+    
+    // Check for blank line (end of headers)
+    if (line.length() == 0 || line == "\n") {
+      break;
+    }
+    
+    headers += line + "\n";
+    
+    // Extract Content-Length
+    if (line.startsWith("Content-Length:")) {
+      contentLength = line.substring(15).toInt();
+      Serial.print("Content-Length: ");
+      Serial.println(contentLength);
+    }
+    
+    // Extract Content-Type
+    if (line.startsWith("Content-Type:")) {
+      contentType = line.substring(13);
+      contentType.trim();
+      Serial.print("Content-Type: ");
+      Serial.println(contentType);
+    }
+  }
+
+  // -----------------------------------
+  //   READ POST BODY
+  // -----------------------------------
+  String postBody = "";
+  if (req.startsWith("POST") && contentLength > 0) {
+    // Wait for body data with timeout
+    timeout = millis();
+    while (client.available() < contentLength) {
+      if (millis() - timeout > 5000) {
+        Serial.println("Timeout waiting for POST body");
+        break;
+      }
+      delay(1);
+    }
+    
+    // Read POST body
+    char bodyBuffer[512]; // Adjust size if needed
+    int bytesRead = 0;
+    while (bytesRead < contentLength && bytesRead < 511) {
+      if (client.available()) {
+        bodyBuffer[bytesRead] = client.read();
+        bytesRead++;
+      } else {
+        delay(1);
+      }
+    }
+    bodyBuffer[bytesRead] = '\0';
+    postBody = String(bodyBuffer);
+    
+    Serial.print("POST Body: ");
+    Serial.println(postBody);
+    
+    // -----------------------------------
+    //   PARSE POST FIELDS
+    // -----------------------------------
+    if (contentType.indexOf("application/x-www-form-urlencoded") >= 0 || 
+        contentType.indexOf("text/plain") >= 0) {
+      // Parse form-encoded data (key=value&key2=value2)
+      parseFormData(postBody);
+    } else if (contentType.indexOf("application/json") >= 0) {
+      // Parse JSON data
+      parseJSON(postBody);
+    }
   }
 
   // -----------------------------------
@@ -212,16 +292,19 @@ void loop() {
   if (req.startsWith("POST")) {
     Serial.println("POST request detected");
     deterrent();
+  } else if (req.startsWith("GET")) {
+    // Handle GET requests
+    Serial.println("GET request detected");
   }
 
-    // -----------------------------------
-    //   SEND HTTP RESPONSE
-    // -----------------------------------
-    client.println("HTTP/1.1 200 OK");
-    client.println("Content-Type: text/plain");
-    client.println("Connection: close");
-    client.println();
-    client.println("ACK from Sender ESP32");
+  // -----------------------------------
+  //   SEND HTTP RESPONSE
+  // -----------------------------------
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: text/plain");
+  client.println("Connection: close");
+  client.println();
+  client.println("ACK from Sender ESP32");
 
   delay(10);
   client.stop();
@@ -229,9 +312,141 @@ void loop() {
   
 }
 
+// Parse form-encoded data (key=value&key2=value2 format)
+void parseFormData(String body) {
+  Serial.println("\n--- Parsing Form Data ---");
+  
+  // Split by & to get individual key=value pairs
+  int startIndex = 0;
+  int endIndex = 0;
+  
+  while (endIndex < body.length()) {
+    // Find the next & or end of string
+    endIndex = body.indexOf('&', startIndex);
+    if (endIndex == -1) {
+      endIndex = body.length();
+    }
+    
+    // Extract one key=value pair
+    String pair = body.substring(startIndex, endIndex);
+    
+    // Split by = to get key and value
+    int equalsIndex = pair.indexOf('=');
+    if (equalsIndex > 0) {
+      String key = pair.substring(0, equalsIndex);
+      String value = pair.substring(equalsIndex + 1);
+      
+      // URL decode if needed (basic implementation)
+      value = urlDecode(value);
+      
+      Serial.print("Field: ");
+      Serial.print(key);
+      Serial.print(" = ");
+      Serial.println(value);
+      
+      // Store or use the parsed values
+      // Example: if (key == "trigger") { ... }
+      if (key == "trigger") {
+        Serial.print("Trigger value received: ");
+        Serial.println(value);
+      }
+    }
+    
+    startIndex = endIndex + 1;
+  }
+  Serial.println("--- End Form Data ---\n");
+}
+
+// Parse JSON data (requires ArduinoJson library)
+void parseJSON(String body) {
+  Serial.println("\n--- Parsing JSON Data ---");
+  
+  // Check if ArduinoJson is available
+  #ifdef ARDUINOJSON_VERSION_MAJOR
+    StaticJsonDocument<512> doc;
+    DeserializationError error = deserializeJson(doc, body);
+    
+    if (error) {
+      Serial.print("JSON parsing failed: ");
+      Serial.println(error.c_str());
+      return;
+    }
+    
+    // Iterate through all key-value pairs
+    JsonObject root = doc.as<JsonObject>();
+    for (JsonPair kv : root) {
+      Serial.print("Field: ");
+      Serial.print(kv.key().c_str());
+      Serial.print(" = ");
+      
+      // Handle different value types
+      if (kv.value().is<int>()) {
+        Serial.println(kv.value().as<int>());
+      } else if (kv.value().is<float>()) {
+        Serial.println(kv.value().as<float>());
+      } else if (kv.value().is<bool>()) {
+        Serial.println(kv.value().as<bool>() ? "true" : "false");
+      } else {
+        Serial.println(kv.value().as<const char*>());
+      }
+      
+      // Example usage:
+      // if (strcmp(kv.key().c_str(), "trigger") == 0) {
+      //   int triggerValue = kv.value().as<int>();
+      // }
+    }
+  #else
+    Serial.println("ArduinoJson library not available - JSON parsing skipped");
+    Serial.println("Body content: " + body);
+  #endif
+  
+  Serial.println("--- End JSON Data ---\n");
+}
+
+// Basic URL decoding (handles %20, %21, etc.)
+String urlDecode(String str) {
+  String decoded = "";
+  char c;
+  char code0;
+  char code1;
+  
+  for (int i = 0; i < str.length(); i++) {
+    c = str.charAt(i);
+    if (c == '+') {
+      decoded += ' ';
+    } else if (c == '%') {
+      if (i + 2 < str.length()) {
+        code0 = str.charAt(i + 1);
+        code1 = str.charAt(i + 2);
+        if (((code0 >= '0' && code0 <= '9') || (code0 >= 'A' && code0 <= 'F') || (code0 >= 'a' && code0 <= 'f')) &&
+            ((code1 >= '0' && code1 <= '9') || (code1 >= 'A' && code1 <= 'F') || (code1 >= 'a' && code1 <= 'f'))) {
+          char decodedChar = (hexCharToInt(code0) << 4) | hexCharToInt(code1);
+          decoded += decodedChar;
+          i += 2;
+        } else {
+          decoded += c;
+        }
+      } else {
+        decoded += c;
+      }
+    } else {
+      decoded += c;
+    }
+  }
+  return decoded;
+}
+
+// Helper function for URL decoding
+int hexCharToInt(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  return 0;
+}
+
 void deterrent(){
   if (!player.playingMusic) {
-        MP3_FILE = tracks[pickRandomTrack()]
+        const char* MP3_FILE = tracks[pickRandomTrack()];
         Serial.println("Connected to client Starting playback");
         player.startPlayingFile(MP3_FILE);
       }
@@ -240,14 +455,9 @@ void deterrent(){
       for (int i=0; i<5; i++) {
         // Random ON duration between 200ms and 2000ms
         int onTime = random(200, 2000);
-
         // Random OFF duration between 200ms and 3000ms
         int offTime = random(200, 3000);
-
-        digitalWrite(relayPin, HIGH);
-        delay(onTime);
-        digitalWrite(relayPin, LOW);
-        delay(offTime);
+        lightFlicker(onTime, offTime);
       }
 
       
@@ -344,7 +554,13 @@ void sendBroadcast() {
 
 int pickRandomTrack() {
   uint32_t seed = esp_random();
-  randomSeed(seed)
-  return random(0, TRACK_COUNT)
+  randomSeed(seed);
+  return random(0, TRACK_COUNT);
 }
 
+void lightFlicker(int onDuration, int offDuration){
+  digitalWrite(relayPin, HIGH);
+  delay(onDuration);
+  digitalWrite(relayPin, LOW);
+  delay(offDuration);
+}
