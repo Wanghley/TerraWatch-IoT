@@ -22,7 +22,7 @@ const char* HEARTBEAT_ACK = "HEARTBEAT_ACK";
 // Connection tracking
 bool is_connected = false;
 unsigned long lastHeartbeatTime = 0;
-const unsigned long HEARTBEAT_TIMEOUT = 20000;  // 20 second timeout
+const unsigned long HEARTBEAT_TIMEOUT = 10000;  // 10 second timeout
 const unsigned long HTTP_TIMEOUT = 5000;        // 5 second HTTP timeout
 
 String senderIP;
@@ -113,6 +113,72 @@ void setup() {
   }
 }
 
+void sendPostRequest(String payload) {
+  WiFiClient client;
+  unsigned long connectStartTime = millis();
+  
+  // Attempt connection with timeout
+  while (!client.connect(senderIP.c_str(), 80)) {
+    if (millis() - connectStartTime > HTTP_TIMEOUT) {
+      Serial.println("HTTP connection timeout!");
+      is_connected = false;
+      senderIP = "";
+      return;
+    }
+    delay(100);
+    // Check WiFi status
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("WiFi disconnected during connection attempt!");
+      is_connected = false;
+      senderIP = "";
+      return;
+    }
+  }
+
+  unsigned long requestStartTime = millis();
+
+  // --- POST REQUEST ---
+  client.println("POST / HTTP/1.1");
+  client.println("Host: " + senderIP);
+  client.println("Content-Type: text/plain");
+  client.println("Content-Length: " + String(payload.length()));
+  client.println();
+  client.print(payload);
+
+  // --- READ RESPONSE WITH TIMEOUT ---
+  unsigned long timeout = millis();
+  while (!client.available()) {
+    if (millis() - timeout > HTTP_TIMEOUT) {
+      Serial.println("HTTP timeout waiting for response!");
+      client.stop();
+      is_connected = false;
+      senderIP = "";
+      return;
+    }
+    delay(100);
+    // Check WiFi status
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("WiFi disconnected during HTTP request!");
+      is_connected = false;
+      senderIP = "";
+      client.stop();
+      return;
+    }
+  }
+
+  // Read response
+  while (client.available()) {
+    String line = client.readStringUntil('\n');
+    Serial.println("Response: " + line);
+  }
+
+  client.stop();
+  Serial.println("POST complete");
+  
+  // Reset heartbeat timer after successful HTTP interaction
+  lastHeartbeatTime = millis();
+}
+
 void loop() {
   // Check WiFi connection status
   if (WiFi.status() != WL_CONNECTED) {
@@ -196,78 +262,29 @@ void loop() {
   }
 
   // Monitor pins and send POST when triggered
-  if((digitalRead(esp32pin) == HIGH && esp32LastPinState == LOW) || 
-     (digitalRead(orangepipin) == HIGH && orangepiLastPinState == LOW)){
-    Serial.println("Pin went HIGH -> Sending POST");
-
-    WiFiClient client;
-    unsigned long connectStartTime = millis();
-    
-    // Attempt connection with timeout
-    while (!client.connect(senderIP.c_str(), 80)) {
-      if (millis() - connectStartTime > HTTP_TIMEOUT) {
-        Serial.println("HTTP connection timeout!");
-        is_connected = false;
-        senderIP = "";
-        return;
-      }
-      delay(100);
-      // Check WiFi status
-      if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("WiFi disconnected during connection attempt!");
-        is_connected = false;
-        senderIP = "";
-        return;
-      }
-    }
-
-    String payload = "trigger=1";
-    unsigned long requestStartTime = millis();
-
-    // --- POST REQUEST ---
-    client.println("POST / HTTP/1.1");
-    client.println("Host: " + senderIP);
-    client.println("Content-Type: text/plain");
-    client.println("Content-Length: " + String(payload.length()));
-    client.println();
-    client.print(payload);
-
-    // --- READ RESPONSE WITH TIMEOUT ---
-    unsigned long timeout = millis();
-    while (!client.available()) {
-      if (millis() - timeout > HTTP_TIMEOUT) {
-        Serial.println("HTTP timeout waiting for response!");
-        client.stop();
-        is_connected = false;
-        senderIP = "";
-        return;
-      }
-      delay(100);
-      // Check WiFi status
-      if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("WiFi disconnected during HTTP request!");
-        is_connected = false;
-        senderIP = "";
-        client.stop();
-        return;
-      }
-    }
-
-    // Read response
-    while (client.available()) {
-      String line = client.readStringUntil('\n');
-      Serial.println("Response: " + line);
-    }
-
-    client.stop();
-    Serial.println("POST complete");
-    
-    // Reset heartbeat timer after successful HTTP interaction
-    lastHeartbeatTime = millis();
+  bool esp32CurrentState = digitalRead(esp32pin);
+  bool orangepiCurrentState = digitalRead(orangepipin);
+  
+  bool esp32PinRising = (esp32CurrentState == HIGH && esp32LastPinState == LOW);
+  bool orangepiPinRising = (orangepiCurrentState == HIGH && orangepiLastPinState == LOW);
+  
+  // Check if both pins just transitioned from LOW to HIGH simultaneously
+  bool bothPinsRising = esp32PinRising && orangepiPinRising;
+  
+  // Send light-trigger when BOTH pins transition from LOW to HIGH simultaneously
+  if (bothPinsRising) {
+    Serial.println("Both pins went HIGH simultaneously -> Sending light-trigger POST");
+    sendPostRequest("light-trigger");
+  }
+  // Send trigger=1 when EITHER pin goes HIGH (from LOW) - only if not both rising
+  else if (esp32PinRising || orangepiPinRising) {
+    Serial.println("Either pin went HIGH -> Sending trigger=1 POST");
+    sendPostRequest("trigger=1");
   }
   
-  esp32LastPinState = digitalRead(esp32pin);
-  orangepiLastPinState = digitalRead(orangepipin);
+  // Update pin states for next iteration
+  esp32LastPinState = esp32CurrentState;
+  orangepiLastPinState = orangepiCurrentState;
   
   delay(10);
 }

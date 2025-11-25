@@ -83,7 +83,7 @@ const char* HEARTBEAT_MSG = "HEARTBEAT";
 bool is_connected = false;
 unsigned long lastHeartbeatTime = 0;
 const unsigned long HEARTBEAT_INTERVAL = 5000;  // Send heartbeat every 5 seconds
-const unsigned long HEARTBEAT_TIMEOUT = 20000;  // 20 second timeout
+const unsigned long HEARTBEAT_TIMEOUT = 10000;  // 10 second timeout
 const unsigned long HTTP_TIMEOUT = 5000;        // 5 second HTTP timeout
 String receiverIP = "";  // IP of the detectwifi board
 
@@ -330,18 +330,68 @@ void loop() {
   Serial.println("Request:");
   Serial.println(req);
 
-  // Read full header until blank line
+  // Read full header until blank line and extract Content-Length
+  int contentLength = 0;
   while (client.available()) {
     String line = client.readStringUntil('\r');
+    if (line.startsWith("Content-Length:")) {
+      // Extract content length value
+      int colonIndex = line.indexOf(':');
+      if (colonIndex != -1) {
+        String lengthStr = line.substring(colonIndex + 1);
+        lengthStr.trim();
+        contentLength = lengthStr.toInt();
+      }
+    }
     if (line == "\n" || line == "\r\n") break;
   }
 
+  // Read POST body if present
+  String payload = "";
+  if (req.startsWith("POST") && contentLength > 0) {
+    // Wait for payload to arrive
+    unsigned long payloadStartTime = millis();
+    while (client.available() < contentLength && (millis() - payloadStartTime < HTTP_TIMEOUT)) {
+      delay(10);
+    }
+    
+    // Read the exact number of bytes specified by Content-Length
+    if (client.available() >= contentLength) {
+      payload = "";
+      for (int i = 0; i < contentLength && client.available(); i++) {
+        char c = client.read();
+        payload += c;
+      }
+      payload.trim(); // Remove any trailing whitespace
+      Serial.print("POST payload received: ");
+      Serial.println(payload);
+    }
+  }
+
   // -----------------------------------
-  //   PROCESS POST REQUEST & TURN ON DETER
+  //   PROCESS POST REQUEST
   // -----------------------------------
   if (req.startsWith("POST")) {
     Serial.println("POST request detected");
-    deterrent();
+    Serial.print("Payload: ");
+    Serial.println(payload.length() > 0 ? payload : "(empty)");
+    
+    if (payload == "light-trigger") {
+      Serial.println("Light trigger detected - keeping lights on for 8 seconds");
+      // Use lightFlicker to keep lights on for 8 seconds (8000ms on, 0ms off)
+      lightFlicker(8000, 0);
+      Serial.println("Lights turned off");
+    } else if (payload == "trigger=1" || payload.length() == 0) {
+      // Default deterrent behavior for trigger=1 or empty payload
+      Serial.println("Deterrent trigger detected - running full deterrent sequence");
+      deterrent();
+    } else {
+      // Unknown payload - still run deterrent as default
+      Serial.print("Unknown payload '");
+      Serial.print(payload);
+      Serial.println("' - running default deterrent");
+      deterrent();
+    }
   }
 
   // -----------------------------------
@@ -487,21 +537,27 @@ void motorCall() {
       // Preset 0: steady forward 4s at max-safe speed
       Serial.println("Preset 0: forward 4s @180");
       runDirectionFor(4000UL, true, 180);
+      delay(333);
       break;
 
     case 1:
       // Preset 1: 2s forward fast, 2s backward medium
       Serial.println("Preset 1: forward 2s @160, backward 2s @120");
       runDirectionFor(2000UL, true, 160);
+      delay(333);
       runDirectionFor(2000UL, false, 120);
+      delay(333);
       break;
 
     case 2:
       // Preset 2: four 1s bursts alternating forward/back at two speeds
       Serial.println("Preset 2: fwd 1s@140, back 1s@140, fwd 1s@90, back 1s@90");
       runDirectionFor(1000UL, true, 140);
-      runDirectionFor(1000UL, false, 140);
+      delay(333);
+      runDirectionFor(1000UL, false, 140);  
+      delay(333);
       runDirectionFor(1000UL, true, 90);
+      delay(333);
       runDirectionFor(1000UL, false, 90);
       break;
 
@@ -509,9 +565,13 @@ void motorCall() {
       // Preset 3: ramp/hold style: gentle -> fast forward, then fast -> gentle backward
       Serial.println("Preset 3: fwd 1s@80, fwd 1s@140, back 1s@140, back 1s@80");
       runDirectionFor(1000UL, true, 80);
+      delay(333);
       runDirectionFor(1000UL, true, 140);
-      runDirectionFor(1000UL, false, 140);
+      delay(333);
+      runDirectionFor(1000UL, false, 140);  
+      delay(333);
       runDirectionFor(1000UL, false, 80);
+      delay(333);
       break;
 
     case 4:
@@ -522,6 +582,7 @@ void motorCall() {
         bool forward = (i % 2 == 0);
         int speed = (i % 2 == 0) ? 180 : 120;
         runDirectionFor(500UL, forward, speed);
+        delay(333);
       }
       break;
   }
