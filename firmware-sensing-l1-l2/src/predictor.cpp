@@ -1,112 +1,178 @@
 #include "predictor.h"
-#include "model.h"
-#include "normalization_values.h"
+#include "model.h"                 // Your converted TFLite model array
+#include "normalization_values.h"  // Your MEAN_VALS and STD_VALS arrays
+
+// Arena size: 120KB is usually safe for this size model. 
+// If you crash on allocation, increase to 130 * 1024.
+const int kTensorArenaSize = 120 * 1024; 
+const float OUTPUT_SMOOTHING = 0.6f; // Low-pass filter on output (0.0 = no smoothing)
+
+Predictor::Predictor() {}
 
 bool Predictor::begin() {
-    model = tflite::GetModel(model_tflite);
-    if (model->version() != TFLITE_SCHEMA_VERSION) {
-        Serial.println("Model schema error!");
+    Serial.println("[AI] Initializing TensorFlow Lite Micro...");
+
+    precomputeInverseStd();
+
+    // 1. Set up logging
+    static tflite::MicroErrorReporter micro_error_reporter;
+    error_reporter = &micro_error_reporter;
+
+    // 2. Allocate memory (Try PSRAM first for ESP32-S3/WROVER, fallback to internal)
+    tensor_arena = (uint8_t*) heap_caps_malloc(kTensorArenaSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!tensor_arena) {
+        Serial.println("[AI] Warning: PSRAM allocation failed, trying Internal RAM...");
+        tensor_arena = (uint8_t*) heap_caps_malloc(kTensorArenaSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    }
+    if (!tensor_arena) {
+        Serial.println("[AI] ❌ Fatal: Could not allocate Tensor Arena.");
         return false;
     }
 
-    static tflite::MicroMutableOpResolver<10> resolver;
-    resolver.AddFullyConnected();
-    resolver.AddReshape();
-    resolver.AddSoftmax();
-    resolver.AddLogistic();
-    resolver.AddQuantize();
-    resolver.AddDequantize();
-    resolver.AddMaxPool2D(); // Needed for GlobalMaxPooling
-    resolver.AddMean(); 
+    // 3. Load Model
+    model = tflite::GetModel(model_tflite);
+    if (model->version() != TFLITE_SCHEMA_VERSION) {
+        Serial.println("[AI] ❌ Schema Mismatch.");
+        return false;
+    }
 
+    // 4. Init Interpreter
     static tflite::MicroInterpreter static_interpreter(
-        model, resolver, tensor_arena, kTensorArenaSize, nullptr);
+        model, resolver, tensor_arena, kTensorArenaSize, error_reporter);
     interpreter = &static_interpreter;
 
+    // 5. Allocate Tensors
     if (interpreter->AllocateTensors() != kTfLiteOk) {
-        Serial.println("AllocateTensors failed!");
+        Serial.println("[AI] ❌ AllocateTensors failed.");
         return false;
     }
 
     input = interpreter->input(0);
     output = interpreter->output(0);
+    
+    // Clear history buffer
+    memset(sensor_history, 0, sizeof(sensor_history));
+
     return true;
 }
 
-float Predictor::get_max(const float* arr, int len) {
-    float m = arr[0];
-    for(int i=1; i<len; i++) if(arr[i] > m) m = arr[i];
-    return m;
+void Predictor::precomputeInverseStd() {
+    // Avoid division by zero at runtime
+    for (int i = 0; i < NUM_FEATURES; i++) {
+        if (STD_VALS[i] <= 0.00001f) inv_std_vals[i] = 1.0f;
+        else inv_std_vals[i] = 1.0f / STD_VALS[i];
+    }
 }
 
-float Predictor::get_mean(const float* arr, int len) {
-    float sum = 0;
-    for(int i=0; i<len; i++) sum += arr[i];
-    return sum / len;
+// Converts struct to flat array [ThermalL(64), ThermalC(64), ThermalR(64), R1(4), R2(4)]
+void Predictor::flattenPacket(SensorPacket& pkt, float* f) {
+    int idx = 0;
+
+    // 1. Thermal Left
+    memcpy(&f[idx], pkt.thermal_left, 64 * sizeof(float));
+    idx += 64;
+
+    // 2. Thermal Center
+    memcpy(&f[idx], pkt.thermal_center, 64 * sizeof(float));
+    idx += 64;
+
+    // 3. Thermal Right
+    memcpy(&f[idx], pkt.thermal_right, 64 * sizeof(float));
+    idx += 64;
+
+    // 4. Radar 1 (4 Features)
+    // IMPORTANT: Match the order used in Python training
+    f[idx++] = (float)pkt.r1.numTargets; 
+    f[idx++] = pkt.r1.range_cm;
+    f[idx++] = pkt.r1.speed_ms;
+    f[idx++] = pkt.r1.energy;
+
+    // 5. Radar 2 (4 Features)
+    f[idx++] = (float)pkt.r2.numTargets;
+    f[idx++] = pkt.r2.range_cm;
+    f[idx++] = pkt.r2.speed_ms;
+    f[idx++] = pkt.r2.energy;
+    
+    // Total should be 200
 }
 
-float Predictor::update(const SensorPacket& pkt) {
-    // 1. Extract Features (12 total)
-    float features[NUM_FEATS];
-
-    // Thermal (Max, Mean)
-    features[0] = get_max(pkt.thermal_left, 64);
-    features[1] = get_mean(pkt.thermal_left, 64);
-    features[2] = get_max(pkt.thermal_center, 64);
-    features[3] = get_mean(pkt.thermal_center, 64);
-    features[4] = get_max(pkt.thermal_right, 64);
-    features[5] = get_mean(pkt.thermal_right, 64);
-
-    // Radar (Log1p, Range)
-    features[6] = log(pkt.r1.energy + 1.0);
-    features[7] = pkt.r1.range_cm;
-    features[8] = log(pkt.r2.energy + 1.0);
-    features[9] = pkt.r2.range_cm;
-
-    // Mic
-    features[10] = (float)pkt.micL;
-    features[11] = (float)pkt.micR;
-
-    // 2. Normalize & Quantize into the Input Tensor
-    // We fill the tensor one timestep at a time
-    // The Tensor acts as our circular buffer
-    
-    // Shift buffer logic (Simple approach: Fill linear)
-    // NOTE: The model expects [198, 12]. 
-    // Ideally, we use a circular buffer, but TFLite tensor is flat.
-    // For simplicity: We fill it up. Once full, we predict, then reset.
-    
-    if (buffer_index >= SEQ_LEN) {
-        // Buffer is full, we should have predicted already or we reset
-        buffer_index = 0; 
+void Predictor::shiftAndAppend(float* new_features) {
+    // Shift rows back by 1 (Discard oldest)
+    // Using memmove is safer for overlapping regions, but manual loop is clear for 2D arrays
+    for (int t = 0; t < SEQ_LEN - 1; t++) {
+        memcpy(sensor_history[t], sensor_history[t + 1], NUM_FEATURES * sizeof(float));
     }
+    // Copy new frame to the last row
+    memcpy(sensor_history[SEQ_LEN - 1], new_features, NUM_FEATURES * sizeof(float));
+}
 
-    for (int f = 0; f < NUM_FEATS; f++) {
-        float norm = (features[f] - MEAN_VALS[f]) / STD_VALS[f];
-        int8_t q = (int8_t)(norm / input->params.scale + input->params.zero_point);
-        
-        int idx = (buffer_index * NUM_FEATS) + f;
-        input->data.int8[idx] = q;
-    }
+void Predictor::copyHistoryToTensor() {
+    float scale = input->params.scale;
+    int zero_point = input->params.zero_point;
+    bool is_quantized = (input->type == kTfLiteInt8);
     
-    buffer_index++;
-    
-    // 3. Check if ready to predict
-    if (buffer_index == SEQ_LEN) {
-        if (interpreter->Invoke() != kTfLiteOk) {
-            Serial.println("Inference Error");
-            buffer_index = 0;
-            return -1.0;
+    int tensor_idx = 0;
+
+    for (int t = 0; t < SEQ_LEN; t++) {
+        for (int f = 0; f < NUM_FEATURES; f++) {
+            float raw = sensor_history[t][f];
+            
+            // Normalize: (Val - Mean) / Std
+            float norm = (raw - MEAN_VALS[f]) * inv_std_vals[f];
+
+            if (is_quantized) {
+                // Quantize to int8
+                int32_t q = (int32_t)(norm / scale) + zero_point;
+                // Clamp
+                if (q < -128) q = -128;
+                if (q > 127) q = 127;
+                input->data.int8[tensor_idx++] = (int8_t)q;
+            } else {
+                input->data.f[tensor_idx++] = norm;
+            }
         }
-        
-        // Reset buffer for next batch (Overlapping window logic is harder, this is Batch logic)
-        buffer_index = 0; 
+    }
+}
 
-        // Dequantize output
-        int8_t out = output->data.int8[0];
-        float prob = (out - output->params.zero_point) * output->params.scale;
-        return prob;
+float Predictor::update(SensorPacket pkt) {
+    float features[NUM_FEATURES];
+    
+    // 1. Flatten Packet
+    flattenPacket(pkt, features);
+
+    // 2. Add to History
+    shiftAndAppend(features);
+    iteration_count++;
+
+    // 3. Warmup Check
+    // If the buffer isn't full of real data yet, don't predict.
+    if (iteration_count < SEQ_LEN) {
+        return -1.0f; // Signal "Not Ready"
     }
 
-    return -1.0; // Not ready
+    // 4. Prepare Input Tensor
+    copyHistoryToTensor();
+
+    // 5. Run Inference
+    if (interpreter->Invoke() != kTfLiteOk) {
+        Serial.println("[AI] Invoke failed!");
+        return -1.0f;
+    }
+
+    // 6. Read Output
+    float raw_prob = 0.0f;
+    if (output->type == kTfLiteInt8) {
+        raw_prob = (output->data.int8[0] - output->params.zero_point) * output->params.scale;
+    } else {
+        raw_prob = output->data.f[0];
+    }
+
+    // Clamp
+    if (raw_prob < 0.0f) raw_prob = 0.0f;
+    if (raw_prob > 1.0f) raw_prob = 1.0f;
+
+    // 7. Smooth Output (EMA)
+    last_prediction = (OUTPUT_SMOOTHING * raw_prob) + ((1.0f - OUTPUT_SMOOTHING) * last_prediction);
+    
+    return last_prediction;
 }
