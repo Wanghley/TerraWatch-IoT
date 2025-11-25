@@ -44,6 +44,8 @@ public:
      */
     bool isSignaling();
 
+    void deactivate(); // Immediately stop any signaling and set pin LOW.
+
 private:
     int _pin;
     unsigned long _stateStartTime;

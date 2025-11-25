@@ -104,3 +104,11 @@ void DeterrentManager::update() {
             break;
     }
 }
+
+void DeterrentManager::deactivate() {
+    digitalWrite(_pin, LOW);
+    _currentState = IDLE;
+    if (_debug) {
+        Serial.println("DETERRENT: Deactivated and set to IDLE.");
+    }
+}
