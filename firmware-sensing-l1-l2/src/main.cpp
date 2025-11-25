@@ -24,7 +24,7 @@
 #define RPIR 14
 #define DEBUG true
 #define BRIGHTNESS 50
-#define WDT_TIMEOUT_SECONDS 15 
+#define WDT_TIMEOUT_SECONDS 120 
 
 // I2C & PIN DEFS
 #define T0_SDA 48
@@ -33,10 +33,10 @@
 #define T1_SCL 9
 #define DETERRENT_PIN 36
 
-#define RADAR1_RX 16
-#define RADAR1_TX 10
-#define RADAR2_RX 17
-#define RADAR2_TX 18
+#define RADAR1_RX 10
+#define RADAR1_TX 16
+#define RADAR2_RX 18
+#define RADAR2_TX 17
 
 // ====== LOGGING MACROS ======
 #if DEBUG
@@ -62,8 +62,9 @@ mmWaveArrayManager mmWaveManager(RADAR1_RX, RADAR1_TX, RADAR2_RX, RADAR2_TX, DEB
 MicManager micManager(0.2, DEBUG);
 DeterrentManager deterrentManager(DETERRENT_PIN, DEBUG);
 
-// AI Predictor Instance
-Predictor predictor;
+// CRITICAL: This MUST be a global variable. 
+// If placed inside setup(), the 80KB Tensor Arena will overflow the 8KB stack and crash.
+Predictor predictor; 
 
 // Task Prototypes
 void sensorCoreTask(void *p);
@@ -87,7 +88,10 @@ void setup()
         LOG_PRINTLN("-----------------------------------------------\n"); 
     }
 
-    // 3. Initialize Hardware
+    // 3. Initialize Sleep Manager (BEFORE creating tasks)
+    sleepManager.configure();
+    
+    // 4. Initialize Hardware
     ledManager.begin();
     ledManager.setColor(100, 100, 0); // Yellow = Booting
 
@@ -96,8 +100,9 @@ void setup()
     micManager.begin();
     deterrentManager.begin();
 
-    // 4. Initialize AI
+    // 5. Initialize AI
     // This loads the model and allocates the Tensor Arena
+    LOG_PRINTLN("[AI] Initializing TensorFlow Lite Micro...");
     if (!predictor.begin())
     {
         LOG_PRINTLN("❌ AI Model Load Failed! Restarting...");
@@ -107,7 +112,7 @@ void setup()
     }
     LOG_PRINTLN("✅ AI Model Loaded.");
 
-    // 5. Create Tasks
+    // 6. Create Tasks
     packetQueue = xQueueCreate(1, sizeof(SensorPacket));
     
     // Core 0: Sensor Reading (High Priority)
@@ -219,16 +224,10 @@ void loop()
     // 1. Reset Watchdog
     esp_task_wdt_reset();
 
-    // 2. Trigger sensor reading task
-    if (sensorTaskHandle)
-    {
-        xTaskNotifyGive(sensorTaskHandle);
-    }
-
-    // 3. Update Deterrent State Machine (Non-blocking)
+    // 2. Update Deterrent State Machine (Non-blocking)
     deterrentManager.update();
 
-    // 4. Debug Stats (Every 10s)
+    // 3. Debug Stats (Every 10s)
     static unsigned long lastStats = 0;
     if (DEBUG && millis() - lastStats > 10000) {
         lastStats = millis();
@@ -236,8 +235,45 @@ void loop()
         if (uplinkTaskHandle) LOG_PRINTF("[AI TASK] Stack High Mark: %u\n", uxTaskGetStackHighWaterMark(uplinkTaskHandle));
     }
 
-    // 5. Timing Control
-    // ~20ms delay = ~50Hz sampling rate
-    // Adjust this to match your model's training frequency (e.g., 10ms for 100Hz)
-    delay(20); 
+    // 4. SLEEP LOGIC: Only trigger sensors if PIR detected motion
+    // Check if any PIR is HIGH (motion detected)
+    bool motionDetected = (digitalRead(LPIR) == HIGH) || 
+                          (digitalRead(CPIR) == HIGH) || 
+                          (digitalRead(RPIR) == HIGH);
+
+    if (motionDetected)
+    {
+        // Motion detected - trigger sensor reading
+        if (sensorTaskHandle)
+        {
+            xTaskNotifyGive(sensorTaskHandle);
+        }
+        delay(20);  // ~50Hz sampling
+    }
+    else
+    {
+        // No motion - prepare for sleep
+        ledManager.setColor(0, 0, 100);  // Blue = sleeping
+        
+        if (DEBUG) {
+            LOG_PRINTLN("💤 No motion detected. Going to sleep...");
+            Serial.flush();
+        }
+        
+        // CRITICAL: Disable watchdog before sleeping, as light sleep blocks loop()
+        esp_task_wdt_delete(NULL);
+        
+        sleepManager.goToSleep();  // This will block until PIR wakes us
+        
+        // WAKE UP - PIR triggered
+        // Re-enable watchdog after waking
+        esp_task_wdt_init(WDT_TIMEOUT_SECONDS, true);
+        esp_task_wdt_add(NULL);
+        
+        ledManager.setColor(0, 100, 0);  // Green = awake
+        if (DEBUG) {
+            LOG_PRINTLN("⏰ Woke up! PIR triggered.");
+            Serial.flush();
+        }
+    }
 }
