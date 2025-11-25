@@ -1,5 +1,6 @@
 #include "thermal_array_manager.h"
 #include "thermal_array_utils.h"
+#include <string.h> // memset
 
 ThermalArrayManager::ThermalArrayManager(uint8_t leftAddr,
                                          uint8_t rightAddr,
@@ -9,7 +10,8 @@ ThermalArrayManager::ThermalArrayManager(uint8_t leftAddr,
                                          bool debug)
     : _amgLeft(), _amgRight(), _amgCenter(),
       _wireLeft(&wireLeft), _wireRight(&wireRight),
-      _debug(debug)
+      _debug(debug),
+      _leftOk(false), _rightOk(false), _centerOk(false)
 { }
 
 bool ThermalArrayManager::begin(uint8_t sda0, uint8_t scl0,
@@ -22,35 +24,38 @@ bool ThermalArrayManager::begin(uint8_t sda0, uint8_t scl0,
     _wireLeft->begin(sda0, scl0, freq);
     _wireRight->begin(sda1, scl1, freq);
 
+    // Try each sensor; do not early-return
     bool status;
+
     status = _amgLeft.begin(0x68, _wireLeft);
-    if (!status) {
-        if (_debug) {
-            Serial.println("[thermal] LEFT sensor not found!");
-        }
-        return false;
+    _leftOk = status;
+    if (!status && _debug) {
+        Serial.println("[thermal] LEFT sensor not found!");
     }
 
     status = _amgRight.begin(0x69, _wireLeft);
-    if (!status) { 
-        if (_debug) {
-            Serial.println("[thermal] RIGHT sensor not found!");
-        }
-        return false;
+    _rightOk = status;
+    if (!status && _debug) {
+        Serial.println("[thermal] RIGHT sensor not found!");
     }
 
     status = _amgCenter.begin(0x69, _wireRight);
-    if (!status) { 
-        if (_debug) {
-            Serial.println("[thermal] CENTER sensor not found!");
-        }
+    _centerOk = status;
+    if (!status && _debug) {
+        Serial.println("[thermal] CENTER sensor not found!");
+    }
+
+    if (!(_leftOk || _rightOk || _centerOk)) {
+        if (_debug) Serial.println("[thermal] No thermal sensors found. Continuing with zeros.");
+        // Ensure deterministic zeros
+        memset(_pixelsLeft,   0, sizeof(_pixelsLeft));
+        memset(_pixelsCenter, 0, sizeof(_pixelsCenter));
+        memset(_pixelsRight,  0, sizeof(_pixelsRight));
+        memset(_rotatedLeft,   0, sizeof(_rotatedLeft));
+        memset(_rotatedCenter, 0, sizeof(_rotatedCenter));
+        memset(_rotatedRight,  0, sizeof(_rotatedRight));
         return false;
     }
-
-    if (_debug) {
-        Serial.println("[thermal] All sensors initialized successfully.");
-    }
-
     return true;
 }
 
@@ -58,9 +63,14 @@ void ThermalArrayManager::readRaw() {
     if (_debug) {
         Serial.println("[thermal] Reading raw pixel data...");
     }
-    _amgLeft.readPixels(_pixelsLeft);
-    _amgRight.readPixels(_pixelsRight);
-    _amgCenter.readPixels(_pixelsCenter);
+    if (_leftOk)  { _amgLeft.readPixels(_pixelsLeft);   }
+    else          { memset(_pixelsLeft,   0, sizeof(_pixelsLeft)); }
+
+    if (_rightOk) { _amgRight.readPixels(_pixelsRight); }
+    else          { memset(_pixelsRight,  0, sizeof(_pixelsRight)); }
+
+    if (_centerOk){ _amgCenter.readPixels(_pixelsCenter);}
+    else          { memset(_pixelsCenter, 0, sizeof(_pixelsCenter)); }
 }
 
 void ThermalArrayManager::readRotated() {
@@ -68,10 +78,9 @@ void ThermalArrayManager::readRotated() {
     if (_debug) {
         Serial.println("[thermal] Rotating pixel data 270° clockwise...");
     }
-
-    rotateMatrix(_pixelsLeft, _rotatedLeft, MatrixRotation::ROT_180_CW);
+    rotateMatrix(_pixelsLeft,   _rotatedLeft,   MatrixRotation::ROT_180_CW);
     rotateMatrix(_pixelsCenter, _rotatedCenter, MatrixRotation::ROT_180_CW);
-    rotateMatrix(_pixelsRight, _rotatedRight, MatrixRotation::ROT_180_CW);
+    rotateMatrix(_pixelsRight,  _rotatedRight,  MatrixRotation::ROT_180_CW);
 }
 
 ThermalReadings ThermalArrayManager::getObject() {

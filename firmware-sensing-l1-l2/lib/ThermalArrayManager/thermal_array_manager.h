@@ -12,29 +12,28 @@ struct ThermalReadings {
 
 class ThermalArrayManager {
 public:
-    ThermalArrayManager(uint8_t leftAddr = 0x68,
-                        uint8_t rightAddr = 0x69,
-                        uint8_t centerAddr = 0x69,
-                        TwoWire &wireLeft = Wire,
-                        TwoWire &wireRight = Wire1,
-                        bool debug = false);
+    ThermalArrayManager(uint8_t leftAddr, uint8_t rightAddr, uint8_t centerAddr,
+                        TwoWire &wireLeft, TwoWire &wireRight, bool debug = false);
 
     // Initialize sensors with I2C pins and frequency
     bool begin(uint8_t sda0, uint8_t scl0,
                uint8_t sda1, uint8_t scl1,
                uint32_t freq = 400000);
 
-    // Read raw pixel data
+    // Read raw pixel data from sensors
     void readRaw();
 
-    // Read pixels and rotate 270° clockwise
+    // Read and rotate pixel data
     void readRotated();
 
-    // Return rotated pixels as object
+    // Get pixel data as ThermalReadings object
     ThermalReadings getObject();
 
-    // Return rotated pixels as JSON string
+    // Get pixel data as JSON string
     String getJSON();
+
+    // Quick status
+    inline bool isReady() const { return _leftOk || _rightOk || _centerOk; }
 
 private:
     TwoWire *_wireLeft;
@@ -53,6 +52,11 @@ private:
     float _rotatedCenter[64];
 
     bool _debug;
+
+    // New: init flags
+    bool _leftOk;
+    bool _rightOk;
+    bool _centerOk;
 
     void rotate270CW(float* src, float* dst);
 };
