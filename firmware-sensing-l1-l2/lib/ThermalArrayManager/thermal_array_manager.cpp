@@ -17,7 +17,7 @@ bool ThermalArrayManager::begin(uint8_t sda0, uint8_t scl0,
                                 uint32_t freq) {
 
     if (_debug) {
-        Serial.println("THERMAL: Initializing ThermalArrayManager...");
+        Serial.println("[thermal] Initializing ThermalArrayManager...");
     }
     _wireLeft->begin(sda0, scl0, freq);
     _wireRight->begin(sda1, scl1, freq);
@@ -26,7 +26,7 @@ bool ThermalArrayManager::begin(uint8_t sda0, uint8_t scl0,
     status = _amgLeft.begin(0x68, _wireLeft);
     if (!status) {
         if (_debug) {
-            Serial.println("THERMAL: LEFT sensor not found!");
+            Serial.println("[thermal] LEFT sensor not found!");
         }
         return false;
     }
@@ -34,7 +34,7 @@ bool ThermalArrayManager::begin(uint8_t sda0, uint8_t scl0,
     status = _amgRight.begin(0x69, _wireLeft);
     if (!status) { 
         if (_debug) {
-            Serial.println("THERMAL: RIGHT sensor not found!");
+            Serial.println("[thermal] RIGHT sensor not found!");
         }
         return false;
     }
@@ -42,9 +42,13 @@ bool ThermalArrayManager::begin(uint8_t sda0, uint8_t scl0,
     status = _amgCenter.begin(0x69, _wireRight);
     if (!status) { 
         if (_debug) {
-            Serial.println("THERMAL: CENTER sensor not found!");
+            Serial.println("[thermal] CENTER sensor not found!");
         }
         return false;
+    }
+
+    if (_debug) {
+        Serial.println("[thermal] All sensors initialized successfully.");
     }
 
     return true;
@@ -52,7 +56,7 @@ bool ThermalArrayManager::begin(uint8_t sda0, uint8_t scl0,
 
 void ThermalArrayManager::readRaw() {
     if (_debug) {
-        Serial.println("THERMAL: Reading raw pixel data...");
+        Serial.println("[thermal] Reading raw pixel data...");
     }
     _amgLeft.readPixels(_pixelsLeft);
     _amgRight.readPixels(_pixelsRight);
@@ -62,7 +66,7 @@ void ThermalArrayManager::readRaw() {
 void ThermalArrayManager::readRotated() {
     readRaw();
     if (_debug) {
-        Serial.println("THERMAL: Rotating pixel data 270° clockwise...");
+        Serial.println("[thermal] Rotating pixel data 270° clockwise...");
     }
 
     rotateMatrix(_pixelsLeft, _rotatedLeft, MatrixRotation::ROT_180_CW);
@@ -72,7 +76,7 @@ void ThermalArrayManager::readRotated() {
 
 ThermalReadings ThermalArrayManager::getObject() {
     if (_debug) {
-        Serial.println("THERMAL: Getting pixel data as object...");
+        Serial.println("[thermal] Getting pixel data as object...");
     }
     ThermalReadings r;
     memcpy(r.left, _rotatedLeft, sizeof(_rotatedLeft));
@@ -83,7 +87,7 @@ ThermalReadings ThermalArrayManager::getObject() {
 
 String ThermalArrayManager::getJSON() {
     if (_debug) {
-        Serial.println("THERMAL: Getting pixel data as JSON...");
+        Serial.println("[thermal] Getting pixel data as JSON...");
     }
     StaticJsonDocument<1024> doc;
     JsonArray left = doc.createNestedArray("left");
