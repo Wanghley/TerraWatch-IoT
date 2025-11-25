@@ -1,3 +1,4 @@
+
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <SPI.h>
@@ -5,6 +6,7 @@
 #include <Adafruit_VS1053.h>
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include "esp_system.h" //random sound change
 
 // L298N pin assignments
 #define ENA 5
@@ -17,6 +19,8 @@
 // === PIN CONFIGURATION (confirmed working) ===
 #define VS1053_RST  -1   // not wired
 #define VS1053_CS    47   // VS1053 XCS
+
+
 #define VS1053_DCS   48   // VS1053 XDCS
 #define VS1053_DREQ  21   // VS1053 DREQ
 #define SD_CS       20   // SD card CS
@@ -27,7 +31,15 @@
 #define SPI_MOSI  17
 
 // === File to play (use absolute path) ===
-const char *MP3_FILE = "/track001.mp3";
+const char *tracks[] = { //random sound change
+"/bear.mp3",
+"/monster.mp3",
+"/eagle.mp3",
+"/owl.mp3",
+"/dog.mp3",
+};
+
+const size_t TRACK_COUNT = 5;
 
 // === Create player object ===
 Adafruit_VS1053_FilePlayer player(VS1053_RST, VS1053_CS, VS1053_DCS, VS1053_DREQ, SD_CS);
@@ -54,17 +66,30 @@ const bool RELAY_ACTIVE_LOW = true;  // change to false if your relay is active 
 const char *ssid = "ECE449deco";
 const char *password = "ece449$$";
 
-// IPAddress local_IP(192, 168, 68, 10);   
-// IPAddress gateway(192, 168, 68, 1);
-// IPAddress subnet(255, 255, 255, 0);
-
 WiFiServer server(80);
 WiFiUDP udp;
 
-unsigned int udpPort = 4210; 
+unsigned int broadcastPort = 4210;  // Port to send broadcasts to
+unsigned int listenPort = 4211;     // Port to listen for STOP messages
+
 bool broadcasting = true;
 unsigned long lastBroadcast = 0;
-String deviceName = "GROUP2_DETER_ESP";
+
+const char* UNIQUE_ID = "GROUP2_DETER_ESP";
+const char* STOP_MSG  = "STOP_BROADCAST";
+const char* HEARTBEAT_MSG = "HEARTBEAT";
+
+// Connection tracking
+bool is_connected = false;
+unsigned long lastHeartbeatTime = 0;
+const unsigned long HEARTBEAT_INTERVAL = 5000;  // Send heartbeat every 5 seconds
+const unsigned long HEARTBEAT_TIMEOUT = 20000;  // 20 second timeout
+const unsigned long HTTP_TIMEOUT = 5000;        // 5 second HTTP timeout
+String receiverIP = "";  // IP of the detectwifi board
+
+// Action triggers updated by POST requests
+bool newActionReceived = false;
+String lastPostPayload = "";
 
 void setup() {
   Serial.begin(115200);
@@ -93,58 +118,42 @@ void setup() {
   Serial.print("[WiFi] Connecting to ");
   Serial.println(ssid);
 
-  WiFi.begin(ssid, password);
   // Auto reconnect is set true as default
   // To set auto connect off, use the following function
   //    WiFi.setAutoReconnect(false);
 
-  // Will try for about  seconds (30x 800ms)
-  int tryDelay = 800;
-  int numberOfTries = 30;
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
 
-  // Wait for the WiFi event
-  while (true) {
-
-    switch (WiFi.status()) {
-      case WL_NO_SSID_AVAIL: Serial.println("[WiFi] SSID not found"); break;
-      case WL_CONNECT_FAILED:
-        Serial.print("[WiFi] Failed - WiFi not connected! Reason: ");
-        return;
-        break;
-      case WL_CONNECTION_LOST: Serial.println("[WiFi] Connection was lost"); break;
-      case WL_SCAN_COMPLETED:  Serial.println("[WiFi] Scan is completed"); break;
-      case WL_DISCONNECTED:    Serial.println("[WiFi] WiFi is disconnected"); break;
-      case WL_CONNECTED:
-        Serial.println("[WiFi] WiFi is connected!");
-        Serial.print("[WiFi] IP address: ");
-        Serial.println(WiFi.localIP());
-        break;
-      default:
-        Serial.print("[WiFi] WiFi Status: ");
-        Serial.println(WiFi.status());
-        break;
-    }
-    if (WiFi.status() == WL_CONNECTED) {
-      break;
-    }
-    delay(tryDelay);
-
-    if (numberOfTries <= 0) {
-      Serial.print("[WiFi] Failed to connect to WiFi! Restarting.");
-      // Use disconnect function to force stop trying to connect
-      WiFi.disconnect();
-      ESP.restart();
-      return;
-    } else {
-      numberOfTries--;
-    }
+  Serial.print("Connecting to WiFi...");
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    delay(300);
   }
-  udp.begin(udpPort);
-  Serial.println("UDP ready.");
 
+  Serial.println("\nConnected!");
+  Serial.print("My IP: ");
+  Serial.println(WiFi.localIP());
+
+  // Begin UDP listening for STOP message and heartbeats
+  udp.begin(listenPort);
+  Serial.print("UDP listening on port ");
+  Serial.println(listenPort);
+
+  // Broadcast until we receive STOP message
   while(true){
-    // Broadcast every 5 seconds
-    if (broadcasting && millis() - lastBroadcast > 5000) {
+    // Check WiFi connection status
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("WiFi disconnected! Setting is_connected = false");
+      is_connected = false;
+      // Attempt to reconnect
+      WiFi.begin(ssid, password);
+      delay(1000);
+      continue;
+    }
+
+    // While not connected, broadcast every 1 second
+    if (!is_connected && (millis() - lastBroadcast > 1000)) {
       sendBroadcast();
       lastBroadcast = millis();
     }
@@ -152,24 +161,32 @@ void setup() {
     // Check if any message is received
     int packetSize = udp.parsePacket();
     if (packetSize) {
-      char incoming[255];
-      int len = udp.read(incoming, 254);
-      if (len > 0) incoming[len] = '\0';
+      char buffer[256];
+      int len = udp.read(buffer, 255);
+      if (len > 0) buffer[len] = '\0';
 
-      Serial.printf("Received message: %s\n", incoming);
+      // Get sender IP
+      IPAddress senderIP = udp.remoteIP();
+      
+      Serial.print("Received from ");
+      Serial.print(senderIP);
+      Serial.print(": ");
+      Serial.println(buffer);
 
-    // Parse incoming JSON
-    StaticJsonDocument<128> doc;
-    DeserializationError error = deserializeJson(doc, incoming);
-    if (!error && doc["type"] == "stop") {
-      broadcasting = false;
-      Serial.println("Received STOP command. Halting broadcast.");
-      break;
+      if (strcmp(buffer, STOP_MSG) == 0) {
+        Serial.println("STOP message received! Connection established.");
+        receiverIP = senderIP.toString();
+        is_connected = true;
+        lastHeartbeatTime = millis();
+        break;
       }
     }
+    
+    delay(100); // Small delay to prevent watchdog reset
   }
   
   Serial.println("server begins");
+  
   server.begin();
 
   pinMode(ENA, OUTPUT);
@@ -196,129 +213,187 @@ void setup() {
 
   randomSeed(analogRead(3));  // randomize using floating analog input
 
-  Serial.println("Initialization complete. Starting playback...");
+  Serial.println("Initialization complete.");
 }
 
 void loop() {
-  // When finished, restart
+  // Check WiFi connection status
+  if (WiFi.status() != WL_CONNECTED) {
+    if (is_connected) {
+      Serial.println("WiFi disconnected! Setting is_connected = false");
+      is_connected = false;
+      receiverIP = "";
+    }
+    // Attempt to reconnect
+    WiFi.begin(ssid, password);
+    delay(1000);
+    return;
+  }
 
+  // Handle reconnection logic when not connected
+  if (!is_connected) {
+    // Broadcast every 1 second until we get STOP message
+    if (millis() - lastBroadcast > 1000) {
+      sendBroadcast();
+      lastBroadcast = millis();
+    }
+
+    // Check for STOP message
+    int packetSize = udp.parsePacket();
+    if (packetSize) {
+      char buffer[256];
+      int len = udp.read(buffer, 255);
+      if (len > 0) buffer[len] = '\0';
+
+      IPAddress senderIP = udp.remoteIP();
+      
+      if (strcmp(buffer, STOP_MSG) == 0) {
+        Serial.println("STOP message received! Connection re-established.");
+        receiverIP = senderIP.toString();
+        is_connected = true;
+        lastHeartbeatTime = millis();
+      }
+    }
+    delay(10);
+    return;
+  }
+
+  // When connected, handle heartbeats and HTTP server
   
+  // Send heartbeat periodically
+  if (millis() - lastBroadcast >= HEARTBEAT_INTERVAL) {
+    sendHeartbeat();
+    lastBroadcast = millis();
+  }
+
+  // Check for heartbeat responses
+  int packetSize = udp.parsePacket();
+  if (packetSize) {
+    char buffer[256];
+    int len = udp.read(buffer, 255);
+    if (len > 0) buffer[len] = '\0';
+
+    IPAddress senderAddr = udp.remoteIP();
+    String senderAddrStr = senderAddr.toString();
+
+    if (strcmp(buffer, "HEARTBEAT_ACK") == 0 && senderAddrStr == receiverIP) {
+      lastHeartbeatTime = millis();
+      Serial.println("Heartbeat ACK received from " + receiverIP);
+    } else if (strcmp(buffer, STOP_MSG) == 0) {
+      // Receiver wants to reconnect
+      receiverIP = senderAddrStr;
+      lastHeartbeatTime = millis();
+      Serial.println("STOP message received - connection refreshed from " + receiverIP);
+    }
+  }
+
+  // Check heartbeat timeout
+  if (millis() - lastHeartbeatTime > HEARTBEAT_TIMEOUT) {
+    Serial.println("Heartbeat timeout! Setting is_connected = false");
+    is_connected = false;
+    receiverIP = "";
+    return;
+  }
+
+  // Handle HTTP server
   WiFiClient client = server.available();
-  if (client) {
-    Serial.println("inside if");
-    
-    // Wait for data from the client
-    while (client.connected() && !client.available()) delay(1);
+  if (!client) {
+    delay(10);
+    return;
+  }
 
-    // Read HTTP headers
-    while (client.connected()) {
-      String line = client.readStringUntil('\n');  // read a line
-      line.trim(); // remove \r and whitespace
-      if (line.length() == 0) break;  // empty line = end of headers
-      Serial.println("Header: " + line);
+  Serial.println("Client connected");
+  unsigned long clientConnectTime = millis();
+
+  // Wait for header with timeout
+  while (!client.available()) {
+    delay(100);
+    // Check for HTTP timeout
+    if (millis() - clientConnectTime > HTTP_TIMEOUT) {
+      Serial.println("HTTP timeout waiting for request!");
+      is_connected = false;
+      receiverIP = "";
+      client.stop();
+      return;
     }
-    
-    // Read JSON Payload
-    String body = "";
-    while (client.available()) {
-      body += (char)client.read();  // read remaining bytes
+    // Also check connection status
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("WiFi disconnected during HTTP request!");
+      is_connected = false;
+      receiverIP = "";
+      client.stop();
+      return;
     }
-    Serial.println("JSON body received:");
-    Serial.println(body);
+  }
 
-    // Obtain
-    DynamicJsonDocument doc(512);  // make sure size is big enough
-    deserializeJson(doc, body);
+  String req = client.readStringUntil('\r');
+  Serial.println("Request:");
+  Serial.println(req);
 
-    const char* action = doc["action"];
-    bool activated = doc["activated"];
-    uint32_t timestamp = doc["timestamp"];
-    double probability = doc["probability"];
-    double threshold = doc["threshold"];
-    const char* modelVersion = doc["model_version"];
-    const char* deviceID = doc["device_id"];
+  // Read full header until blank line
+  while (client.available()) {
+    String line = client.readStringUntil('\r');
+    if (line == "\n" || line == "\r\n") break;
+  }
 
-    Serial.println(action);
-    Serial.println(activated);
-    Serial.println(timestamp);
+  // -----------------------------------
+  //   PROCESS POST REQUEST & TURN ON DETER
+  // -----------------------------------
+  if (req.startsWith("POST")) {
+    Serial.println("POST request detected");
+    deterrent();
+  }
 
-    //Send HTTP Response
-    client.println("HTTP/1.1 200 OK");          // Status line
-    client.println("Content-Type: text/plain"); // Type of response
-    client.println("Connection: close");        // Close after response
-    client.println();                            // Empty line separates headers from body
-    client.println("Message received!");        // Response body
+  // -----------------------------------
+  //   SEND HTTP RESPONSE
+  // -----------------------------------
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: text/plain");
+  client.println("Connection: close");
+  client.println();
+  client.println("ACK from Sender ESP32");
 
-    // close the connection:
-    client.stop();
+  // Wait for response to be sent with timeout
+  unsigned long responseStartTime = millis();
+  while (client.connected() && (millis() - responseStartTime < HTTP_TIMEOUT)) {
+    delay(100);
+  }
 
-    if(activated){
-      if (!player.playingMusic) {
+  delay(10);
+  client.stop();
+  Serial.println("Client disconnected");
+  
+  // Reset heartbeat timer after successful HTTP interaction
+  lastHeartbeatTime = millis();
+}
+
+void deterrent(){
+  if (!player.playingMusic) {
+        const char* MP3_FILE = tracks[pickRandomTrack()];
         Serial.println("Connected to client Starting playback");
         player.startPlayingFile(MP3_FILE);
-        Serial.println("problem is with mp3 file");
       }
 
-      // Random ON duration between 200ms and 2000ms
-      int onTime = random(200, 2000);
 
-      // Random OFF duration between 200ms and 3000ms
-      int offTime = random(200, 3000);
-
-      digitalWrite(relayPin, LOW);
-      delay(onTime);
-      digitalWrite(relayPin, HIGH);
-      delay(offTime);
+      for (int i=0; i<5; i++) {
+        // Random ON duration between 200ms and 2000ms
+        int onTime = random(200, 2000);
+        // Random OFF duration between 200ms and 3000ms
+        int offTime = random(200, 3000);
+        lightFlicker(onTime, offTime);
+      }
 
       
       //START MOTOR
       analogWrite(ENA, 255);
       analogWrite(ENB, 255);
 
-      Serial.println("starting motor!");
-    //   Map speed (0–255) → delay (ms between steps)
-    //   Sets speed --> Restate and change "speedvalue" to change the speed
-      stepDelayMs = map(speedValue, 0, 255, 10, 1);
+      motorCall();
 
-      unsigned long startTime = millis();
-    //  while (millis() - startTime < (unsigned long)runSeconds * 1000UL) {
-    //    if (direction == 'F') stepForward();
-    //    else stepBackward();
-    //  }
-
-      speedValue = 200;
-      while (millis() - startTime < (unsigned long)2 * 1000UL) {
-        Serial.println("starting forward");
-        stepForward();
+      if(player.playingMusic) {
+        player.stopPlaying();
       }
-
-      startTime = millis();
-      while (millis() - startTime < (unsigned long)2 * 1000UL) {
-        Serial.println("starting backward");
-        stepBackward();
-      }
-
-      speedValue = 150;
-      stepDelayMs = map(speedValue, 0, 255, 10, 1);
-      startTime = millis();  
-      while (millis() - startTime < (unsigned long)2 * 1000UL) {
-        Serial.println("starting forward 2");
-        stepForward();
-      }
-
-      startTime = millis();
-      while (millis() - startTime < (unsigned long)2 * 1000UL) {
-        Serial.println("starting backward 2");
-        stepBackward();
-      }
-
-      stopStepper();
-
-      while (player.playingMusic) {
-        delay(1000);
-      }
-    }
-  }
+      Serial.println("Exiting deter");
 }
 
 void stepForward() {
@@ -350,20 +425,106 @@ void stopStepper() {
 }
 // helper function to send a broadcast message
 void sendBroadcast() {
-  StaticJsonDocument<256> doc;
-  doc["id"] = deviceName;
-  doc["ip"] = WiFi.localIP().toString();
-  doc["mac"] = WiFi.macAddress();
-  doc["type"] = "broadcast";
+  udp.beginPacket("255.255.255.255", broadcastPort);
 
-  char buffer[256];
-  size_t n = serializeJson(doc, buffer);
+  // Message format:
+  //     UNIQUE_ID|IP_ADDRESS
+  String message = String(UNIQUE_ID) + "|" + WiFi.localIP().toString();
 
-  IPAddress broadcastIP = WiFi.localIP();
-  broadcastIP[3] = 255;
-  udp.beginPacket(broadcastIP, udpPort);
-  udp.write((uint8_t*)buffer, n);
+  udp.print(message);
   udp.endPacket();
 
-  Serial.println("Broadcast sent: " + String(buffer));
+  Serial.println("Broadcast message sent: " + message);
+}
+
+// helper function to send a heartbeat message
+void sendHeartbeat() {
+  if (receiverIP.length() == 0) return;
+  
+  udp.beginPacket(receiverIP.c_str(), broadcastPort);  // Send to port 4210 where detectwifi listens
+  udp.print(HEARTBEAT_MSG);
+  udp.endPacket();
+  
+  Serial.println("Heartbeat sent to " + receiverIP);
+}
+
+int pickRandomTrack() {
+  uint32_t seed = esp_random();
+  randomSeed(seed);
+  return random(0, TRACK_COUNT);
+}
+
+void lightFlicker(int onDuration, int offDuration){
+  digitalWrite(relayPin, HIGH);
+  delay(onDuration);
+  digitalWrite(relayPin, LOW);
+  delay(offDuration);
+}
+
+void runDirectionFor(unsigned long durationMs, bool forward, int speed) {
+  if (speed > 180) speed = 180;            // safety cap
+  if (speed < 0) speed = 0;
+  speedValue = speed;
+  stepDelayMs = map(speedValue, 0, 255, 10, 1);
+
+  unsigned long startTime = millis();
+  while (millis() - startTime < durationMs) {
+    if (forward) {
+      stepForward();
+    } else {
+      stepBackward();
+    }
+  }
+}
+
+void motorCall() {
+  int choice = random(5); // 0..4
+  Serial.print("Preset chosen: ");
+  Serial.println(choice);
+
+  switch (choice) {
+    case 0:
+      // Preset 0: steady forward 4s at max-safe speed
+      Serial.println("Preset 0: forward 4s @180");
+      runDirectionFor(4000UL, true, 180);
+      break;
+
+    case 1:
+      // Preset 1: 2s forward fast, 2s backward medium
+      Serial.println("Preset 1: forward 2s @160, backward 2s @120");
+      runDirectionFor(2000UL, true, 160);
+      runDirectionFor(2000UL, false, 120);
+      break;
+
+    case 2:
+      // Preset 2: four 1s bursts alternating forward/back at two speeds
+      Serial.println("Preset 2: fwd 1s@140, back 1s@140, fwd 1s@90, back 1s@90");
+      runDirectionFor(1000UL, true, 140);
+      runDirectionFor(1000UL, false, 140);
+      runDirectionFor(1000UL, true, 90);
+      runDirectionFor(1000UL, false, 90);
+      break;
+
+    case 3:
+      // Preset 3: ramp/hold style: gentle -> fast forward, then fast -> gentle backward
+      Serial.println("Preset 3: fwd 1s@80, fwd 1s@140, back 1s@140, back 1s@80");
+      runDirectionFor(1000UL, true, 80);
+      runDirectionFor(1000UL, true, 140);
+      runDirectionFor(1000UL, false, 140);
+      runDirectionFor(1000UL, false, 80);
+      break;
+
+    case 4:
+      // Preset 4: short pulses: 4 alternating 0.5s pulses (total 4s = 8 pulses of 0.5s? we'll do 8*0.5)
+      Serial.println("Preset 4: 8 x 0.5s pulses alternating, speeds 180/120");
+      // We'll do 8 pulses of 500ms (alternating direction and alternating speeds)
+      for (int i = 0; i < 8; ++i) {
+        bool forward = (i % 2 == 0);
+        int speed = (i % 2 == 0) ? 180 : 120;
+        runDirectionFor(500UL, forward, speed);
+      }
+      break;
+  }
+
+  Serial.println("Preset complete.");
 }
