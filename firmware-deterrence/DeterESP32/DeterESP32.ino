@@ -1,3 +1,4 @@
+
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <SPI.h>
@@ -76,6 +77,15 @@ unsigned long lastBroadcast = 0;
 
 const char* UNIQUE_ID = "GROUP2_DETER_ESP";
 const char* STOP_MSG  = "STOP_BROADCAST";
+const char* HEARTBEAT_MSG = "HEARTBEAT";
+
+// Connection tracking
+bool is_connected = false;
+unsigned long lastHeartbeatTime = 0;
+const unsigned long HEARTBEAT_INTERVAL = 5000;  // Send heartbeat every 5 seconds
+const unsigned long HEARTBEAT_TIMEOUT = 20000;  // 20 second timeout
+const unsigned long HTTP_TIMEOUT = 5000;        // 5 second HTTP timeout
+String receiverIP = "";  // IP of the detectwifi board
 
 // Action triggers updated by POST requests
 bool newActionReceived = false;
@@ -125,14 +135,25 @@ void setup() {
   Serial.print("My IP: ");
   Serial.println(WiFi.localIP());
 
-  // Begin UDP listening for STOP message
+  // Begin UDP listening for STOP message and heartbeats
   udp.begin(listenPort);
   Serial.print("UDP listening on port ");
   Serial.println(listenPort);
 
+  // Broadcast until we receive STOP message
   while(true){
-    // Broadcast every 5 seconds
-    if (millis() - lastBroadcast > 5000) {
+    // Check WiFi connection status
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("WiFi disconnected! Setting is_connected = false");
+      is_connected = false;
+      // Attempt to reconnect
+      WiFi.begin(ssid, password);
+      delay(1000);
+      continue;
+    }
+
+    // While not connected, broadcast every 1 second
+    if (!is_connected && (millis() - lastBroadcast > 1000)) {
       sendBroadcast();
       lastBroadcast = millis();
     }
@@ -144,14 +165,24 @@ void setup() {
       int len = udp.read(buffer, 255);
       if (len > 0) buffer[len] = '\0';
 
-      Serial.print("Received: ");
+      // Get sender IP
+      IPAddress senderIP = udp.remoteIP();
+      
+      Serial.print("Received from ");
+      Serial.print(senderIP);
+      Serial.print(": ");
       Serial.println(buffer);
 
       if (strcmp(buffer, STOP_MSG) == 0) {
-        Serial.println("STOP message received! Halting broadcast.");
+        Serial.println("STOP message received! Connection established.");
+        receiverIP = senderIP.toString();
+        is_connected = true;
+        lastHeartbeatTime = millis();
         break;
       }
     }
+    
+    delay(100); // Small delay to prevent watchdog reset
   }
   
   Serial.println("server begins");
@@ -186,18 +217,115 @@ void setup() {
 }
 
 void loop() {
-  // When finished, restart
+  // Check WiFi connection status
+  if (WiFi.status() != WL_CONNECTED) {
+    if (is_connected) {
+      Serial.println("WiFi disconnected! Setting is_connected = false");
+      is_connected = false;
+      receiverIP = "";
+    }
+    // Attempt to reconnect
+    WiFi.begin(ssid, password);
+    delay(1000);
+    return;
+  }
 
-  Serial.println("Looking for client connection.");
+  // Handle reconnection logic when not connected
+  if (!is_connected) {
+    // Broadcast every 1 second until we get STOP message
+    if (millis() - lastBroadcast > 1000) {
+      sendBroadcast();
+      lastBroadcast = millis();
+    }
+
+    // Check for STOP message
+    int packetSize = udp.parsePacket();
+    if (packetSize) {
+      char buffer[256];
+      int len = udp.read(buffer, 255);
+      if (len > 0) buffer[len] = '\0';
+
+      IPAddress senderIP = udp.remoteIP();
+      
+      if (strcmp(buffer, STOP_MSG) == 0) {
+        Serial.println("STOP message received! Connection re-established.");
+        receiverIP = senderIP.toString();
+        is_connected = true;
+        lastHeartbeatTime = millis();
+      }
+    }
+    delay(10);
+    return;
+  }
+
+  // When connected, handle heartbeats and HTTP server
+  
+  // Send heartbeat periodically
+  if (millis() - lastBroadcast >= HEARTBEAT_INTERVAL) {
+    sendHeartbeat();
+    lastBroadcast = millis();
+  }
+
+  // Check for heartbeat responses
+  int packetSize = udp.parsePacket();
+  if (packetSize) {
+    char buffer[256];
+    int len = udp.read(buffer, 255);
+    if (len > 0) buffer[len] = '\0';
+
+    IPAddress senderAddr = udp.remoteIP();
+    String senderAddrStr = senderAddr.toString();
+
+    if (strcmp(buffer, "HEARTBEAT_ACK") == 0 && senderAddrStr == receiverIP) {
+      lastHeartbeatTime = millis();
+      Serial.println("Heartbeat ACK received from " + receiverIP);
+    } else if (strcmp(buffer, STOP_MSG) == 0) {
+      // Receiver wants to reconnect
+      receiverIP = senderAddrStr;
+      lastHeartbeatTime = millis();
+      Serial.println("STOP message received - connection refreshed from " + receiverIP);
+    }
+  }
+
+  // Check heartbeat timeout
+  if (millis() - lastHeartbeatTime > HEARTBEAT_TIMEOUT) {
+    Serial.println("Heartbeat timeout! Setting is_connected = false");
+    is_connected = false;
+    receiverIP = "";
+    return;
+  }
+
+  // Handle HTTP server
   WiFiClient client = server.available();
-  if (!client) return;
+  if (!client) {
+    delay(10);
+    return;
+  }
 
   Serial.println("Client connected");
+  unsigned long clientConnectTime = millis();
 
-  // Wait for header
-  while (!client.available()) delay(1);
+  // Wait for header with timeout
+  while (!client.available()) {
+    delay(100);
+    // Check for HTTP timeout
+    if (millis() - clientConnectTime > HTTP_TIMEOUT) {
+      Serial.println("HTTP timeout waiting for request!");
+      is_connected = false;
+      receiverIP = "";
+      client.stop();
+      return;
+    }
+    // Also check connection status
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("WiFi disconnected during HTTP request!");
+      is_connected = false;
+      receiverIP = "";
+      client.stop();
+      return;
+    }
+  }
 
-  
   String req = client.readStringUntil('\r');
   Serial.println("Request:");
   Serial.println(req);
@@ -216,19 +344,27 @@ void loop() {
     deterrent();
   }
 
-    // -----------------------------------
-    //   SEND HTTP RESPONSE
-    // -----------------------------------
-    client.println("HTTP/1.1 200 OK");
-    client.println("Content-Type: text/plain");
-    client.println("Connection: close");
-    client.println();
-    client.println("ACK from Sender ESP32");
+  // -----------------------------------
+  //   SEND HTTP RESPONSE
+  // -----------------------------------
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: text/plain");
+  client.println("Connection: close");
+  client.println();
+  client.println("ACK from Sender ESP32");
+
+  // Wait for response to be sent with timeout
+  unsigned long responseStartTime = millis();
+  while (client.connected() && (millis() - responseStartTime < HTTP_TIMEOUT)) {
+    delay(100);
+  }
 
   delay(10);
   client.stop();
   Serial.println("Client disconnected");
   
+  // Reset heartbeat timer after successful HTTP interaction
+  lastHeartbeatTime = millis();
 }
 
 void deterrent(){
@@ -299,6 +435,17 @@ void sendBroadcast() {
   udp.endPacket();
 
   Serial.println("Broadcast message sent: " + message);
+}
+
+// helper function to send a heartbeat message
+void sendHeartbeat() {
+  if (receiverIP.length() == 0) return;
+  
+  udp.beginPacket(receiverIP.c_str(), broadcastPort);  // Send to port 4210 where detectwifi listens
+  udp.print(HEARTBEAT_MSG);
+  udp.endPacket();
+  
+  Serial.println("Heartbeat sent to " + receiverIP);
 }
 
 int pickRandomTrack() {
@@ -381,4 +528,3 @@ void motorCall() {
 
   Serial.println("Preset complete.");
 }
-
