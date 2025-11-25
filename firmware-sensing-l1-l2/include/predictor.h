@@ -2,39 +2,55 @@
 #define PREDICTOR_H
 
 #include <Arduino.h>
-#include "shared_types.h" 
+#include "shared_types.h" // Must include this to know what SensorPacket is!
+
+// TFLite Micro Includes
 #include <TensorFlowLite_ESP32.h>
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
-#include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
+#include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+
+// Model Architecture Constants
+#define SEQ_LEN 198       // Time steps
+#define NUM_FEATURES 200  // Features per step
 
 class Predictor {
 public:
-    bool begin();
-    // Returns -1.0 if buffering, or 0.0-1.0 if prediction made
-    float update(const SensorPacket& pkt); 
+    Predictor();
+    bool begin(); // Returns true on success
+    
+    // Accepts a packet, returns probability [0.0 - 1.0]
+    // Returns -1.0 if the buffer is still warming up.
+    float update(SensorPacket pkt);
 
 private:
-    // TFLite boilerplate
+    // TFLite pointers
+    tflite::ErrorReporter* error_reporter = nullptr;
     const tflite::Model* model = nullptr;
     tflite::MicroInterpreter* interpreter = nullptr;
     TfLiteTensor* input = nullptr;
     TfLiteTensor* output = nullptr;
-    
-    // 40KB Arena should be enough
-    static const int kTensorArenaSize = 40 * 1024; 
-    uint8_t tensor_arena[kTensorArenaSize];
+    tflite::AllOpsResolver resolver;
 
-    // Buffering for Time Series
-    // 198 steps x 12 features (Must match Python training)
-    static const int SEQ_LEN = 198; 
-    static const int NUM_FEATS = 12;
+    // Memory Arena
+    uint8_t* tensor_arena = nullptr;
     
-    int buffer_index = 0;
+    // Rolling History Buffer [Time][Features]
+    float sensor_history[SEQ_LEN][NUM_FEATURES];
+    
+    // Optimization: Inverse Standard Deviations for fast normalization
+    float inv_std_vals[NUM_FEATURES];
 
-    // Helper functions
-    float get_max(const float* arr, int len);
-    float get_mean(const float* arr, int len);
+    // State tracking
+    int iteration_count = 0;
+    float last_prediction = 0.0f;
+
+    // Internal Helpers
+    void precomputeInverseStd();
+    void flattenPacket(SensorPacket& pkt, float* out_features);
+    void shiftAndAppend(float* new_features);
+    void copyHistoryToTensor();
 };
 
 #endif
