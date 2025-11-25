@@ -14,7 +14,7 @@ public:
      * @brief Constructor
      * @param signalPin The GPIO pin to use for signaling.
      */
-    DeterrentManager(int signalPin, bool debug = false);
+    DeterrentManager(int signalPin, bool debug = false, bool activeHigh = true);
 
     /**
      * @brief Initializes the pin. Call this in setup().
@@ -45,11 +45,19 @@ public:
     bool isSignaling();
 
     void deactivate(); // Immediately stop any signaling and set pin LOW.
+    void setActiveHigh(bool ah) { _activeHigh = ah; }
+
+    // NEW: latch/persistent control
+    void enablePersistent(bool p) { _persistent = p; }
+    void set(bool on) { drive(on); _currentState = on ? SURE_LATCH : IDLE; }
 
 private:
+    void drive(bool on) { digitalWrite(_pin, (_activeHigh ? (on ? HIGH : LOW) : (on ? LOW : HIGH))); }
     int _pin;
     unsigned long _stateStartTime;
     bool _debug;
+    bool _activeHigh;
+    bool _persistent = false;          // NEW
 
     // Durations in milliseconds
     const int PULSE_DURATION = 20;
@@ -61,8 +69,10 @@ private:
         SURE_PULSE,
         UNSURE_PULSE_1,
         UNSURE_PAUSE,
-        UNSURE_PULSE_2
-    };
+        UNSURE_PULSE_2,
+        SURE_LATCH,
+        UNSURE_LATCH
+    }; // NEW latched states
 
     State _currentState;
 };

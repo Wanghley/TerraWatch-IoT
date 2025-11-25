@@ -5,23 +5,20 @@
 
 #include "deterrent_manager.h"
 
-DeterrentManager::DeterrentManager(int signalPin, bool debug)
+DeterrentManager::DeterrentManager(int signalPin, bool debug, bool activeHigh)
     : _pin(signalPin),
       _stateStartTime(0),
       _debug(debug),
-      _currentState(IDLE) {
-        if (_debug) {
-            Serial.println("DETERRENT: DeterrentManager created.");
-        }
+      _currentState(IDLE),
+      _activeHigh(activeHigh) {
+    if (_debug) Serial.println("DETERRENT: DeterrentManager created.");
 }
 
 void DeterrentManager::begin() {
     pinMode(_pin, OUTPUT);
-    digitalWrite(_pin, LOW);
+    drive(false);          // ensure idle level
     _currentState = IDLE;
-    if (_debug) {
-        Serial.println("DETERRENT: DeterrentManager initialized.");
-    }
+    if (_debug) Serial.println("DETERRENT: DeterrentManager initialized.");
 }
 
 bool DeterrentManager::isSignaling() {
@@ -29,86 +26,58 @@ bool DeterrentManager::isSignaling() {
 }
 
 void DeterrentManager::signalSureDetection() {
-    // Only start a new signal if we are idle
+    if (_persistent) {
+        drive(true);
+        _currentState = SURE_LATCH;
+        if (_debug) Serial.println("DETERRENT: Sure detection latched ON.");
+        return;
+    }
     if (_currentState == IDLE) {
         _currentState = SURE_PULSE;
         _stateStartTime = millis();
-        digitalWrite(_pin, HIGH); // Start the pulse
-        if (_debug) {
-            Serial.println("DETERRENT: Sure detection signal started.");
-        }
+        drive(true);
+        if (_debug) Serial.println("DETERRENT: Sure detection signal started.");
     }
 }
 
 void DeterrentManager::signalUnsureDetection() {
-    // Only start a new signal if we are idle
-    if (_currentState == IDLE) {
-        _currentState = UNSURE_PULSE_1;
-        _stateStartTime = millis();
-        digitalWrite(_pin, HIGH); // Start the first pulse
-        if (_debug) {
-            Serial.println("DETERRENT: Unsure detection signal started.");
-        }
+    if (_persistent) {
+        drive(true);
+        _currentState = UNSURE_LATCH;
+        if (_debug) Serial.println("DETERRENT: Unsure detection latched ON.");
+        return;
     }
+    if (_currentState != IDLE) return;
+    _currentState = UNSURE_PULSE_1;
+    _stateStartTime = millis();
+    drive(true);
+    if (_debug) Serial.println("DETERRENT: Unsure detection sequence started (pulse 1).");
 }
 
 void DeterrentManager::update() {
-    // If we are idle, there's nothing to do.
-    if (_currentState == IDLE) {
-        return;
-    }
-
-    unsigned long currentTime = millis();
-    unsigned long elapsedTime = currentTime - _stateStartTime;
-
-    // Run the state machine
+    if (_persistent) return; // hold current driven state
+    if (_currentState == IDLE) return;
+    unsigned long now = millis();
+    unsigned long elapsed = now - _stateStartTime;
     switch (_currentState) {
-
         case SURE_PULSE:
-            // This is a "Sure" detection (one 20ms pulse)
-            if (elapsedTime >= PULSE_DURATION) {
-                digitalWrite(_pin, LOW); // End the pulse
-                _currentState = IDLE;    // Go back to idle
-            }
+            if (elapsed >= PULSE_DURATION) { drive(false); _currentState = IDLE; }
             break;
-
         case UNSURE_PULSE_1:
-            // This is the first pulse of an "Unsure" detection
-            if (elapsedTime >= PULSE_DURATION) {
-                digitalWrite(_pin, LOW);            // End the first pulse
-                _currentState = UNSURE_PAUSE;       // Move to the pause state
-                _stateStartTime = currentTime;      // Reset the timer for the pause
-            }
+            if (elapsed >= PULSE_DURATION) { drive(false); _currentState = UNSURE_PAUSE; _stateStartTime = now; }
             break;
-
         case UNSURE_PAUSE:
-            // This is the pause between "Unsure" pulses
-            if (elapsedTime >= PAUSE_DURATION) {
-                digitalWrite(_pin, HIGH);           // Start the second pulse
-                _currentState = UNSURE_PULSE_2;     // Move to the second pulse state
-                _stateStartTime = currentTime;      // Reset the timer for the pulse
-            }
+            if (elapsed >= PAUSE_DURATION) { drive(true); _currentState = UNSURE_PULSE_2; _stateStartTime = now; }
             break;
-
         case UNSURE_PULSE_2:
-            // This is the second pulse of an "Unsure" detection
-            if (elapsedTime >= PULSE_DURATION) {
-                digitalWrite(_pin, LOW); // End the second pulse
-                _currentState = IDLE;    // Go back to idle
-            }
+            if (elapsed >= PULSE_DURATION) { drive(false); _currentState = IDLE; }
             break;
-        
-        case IDLE:
-        default:
-            // Should not be here, but good to have a default
-            break;
+        default: break;
     }
 }
 
 void DeterrentManager::deactivate() {
-    digitalWrite(_pin, LOW);
+    drive(false);
     _currentState = IDLE;
-    if (_debug) {
-        Serial.println("DETERRENT: Deactivated and set to IDLE.");
-    }
+    if (_debug) Serial.println("DETERRENT: Deactivated and set to IDLE.");
 }
