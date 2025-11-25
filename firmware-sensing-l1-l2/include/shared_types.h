@@ -3,24 +3,33 @@
 
 #include <Arduino.h>
 
-// ====== RADAR DATA STRUCTURE ======
-struct RadarReading {
+// 1. Define Radar Packet Sub-struct
+struct RadarPacket {
     float range_cm;
     float speed_ms;
     float energy;
-    unsigned long lastDetection;
     bool isValid;
+    int numTargets; 
+    unsigned long lastDetection; // Included to match your existing code
 };
 
-// ====== SENSOR PACKET STRUCTURE ======
+// 2. Define the Main Sensor Packet
 struct SensorPacket {
+    // Thermal Data (64 pixels * 3 sensors)
     float thermal_left[64];
     float thermal_center[64];
     float thermal_right[64];
-    RadarReading r1;
-    RadarReading r2;
-    double micL;
-    double micR;
+
+    // Radar Data
+    RadarPacket r1;
+    RadarPacket r2;
+
+    // Mic Data
+    float micL;
+    float micR;
+
+    // Timestamp
+    unsigned long timestamp;
 };
 
 #endif
