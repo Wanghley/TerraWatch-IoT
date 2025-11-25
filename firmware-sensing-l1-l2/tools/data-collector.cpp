@@ -27,10 +27,10 @@ unsigned int UDP_PORT = 4210;
 #define T1_SCL 9
 
 // mmWave pins
-#define RADAR1_RX 16 // LEFT
-#define RADAR1_TX 10 // LEFT
-#define RADAR2_RX 17 // RIGHT
-#define RADAR2_TX 18 // RIGHT
+#define RADAR1_RX 10 // LEFT
+#define RADAR1_TX 16 // LEFT
+#define RADAR2_RX 18 // RIGHT
+#define RADAR2_TX 17 // RIGHT
 // ==========================
 
 WifiManager wifiManager(WIFI_SSID, WIFI_PASSWORD, DEBUG);
