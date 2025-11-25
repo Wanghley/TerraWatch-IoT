@@ -18,6 +18,8 @@
 // === PIN CONFIGURATION (confirmed working) ===
 #define VS1053_RST  -1   // not wired
 #define VS1053_CS    47   // VS1053 XCS
+
+
 #define VS1053_DCS   48   // VS1053 XDCS
 #define VS1053_DREQ  21   // VS1053 DREQ
 #define SD_CS       20   // SD card CS
@@ -250,45 +252,7 @@ void deterrent(){
       analogWrite(ENA, 255);
       analogWrite(ENB, 255);
 
-      Serial.println("starting motor!");
-    //   Map speed (0–255) → delay (ms between steps)
-    //   Sets speed --> Restate and change "speedvalue" to change the speed
-      stepDelayMs = map(speedValue, 0, 255, 10, 1);
-
-      unsigned long startTime = millis();
-    //  while (millis() - startTime < (unsigned long)runSeconds * 1000UL) {
-    //    if (direction == 'F') stepForward();
-    //    else stepBackward();
-    //  }
-
-      speedValue = 200;
-      Serial.println("starting forward");
-      while (millis() - startTime < (unsigned long)1 * 1000UL) {
-        stepForward();
-      }
-
-      startTime = millis();
-      Serial.println("starting backward");
-      while (millis() - startTime < (unsigned long)1 * 1000UL) {
-        Serial.println("starting backward");
-        stepBackward();
-      }
-
-      speedValue = 150;
-      stepDelayMs = map(speedValue, 0, 255, 10, 1);
-      startTime = millis();  
-      while (millis() - startTime < (unsigned long)1 * 1000UL) {
-        Serial.println("starting forward 2");
-        stepForward();
-      }
-
-      startTime = millis();
-      while (millis() - startTime < (unsigned long)1 * 1000UL) {
-        Serial.println("starting backward 2");
-        stepBackward();
-      }
-
-      stopStepper();
+      motorCall();
 
       if(player.playingMusic) {
         player.stopPlaying();
@@ -349,3 +313,72 @@ void lightFlicker(int onDuration, int offDuration){
   digitalWrite(relayPin, LOW);
   delay(offDuration);
 }
+
+void runDirectionFor(unsigned long durationMs, bool forward, int speed) {
+  if (speed > 180) speed = 180;            // safety cap
+  if (speed < 0) speed = 0;
+  speedValue = speed;
+  stepDelayMs = map(speedValue, 0, 255, 10, 1);
+
+  unsigned long startTime = millis();
+  while (millis() - startTime < durationMs) {
+    if (forward) {
+      stepForward();
+    } else {
+      stepBackward();
+    }
+  }
+}
+
+void motorCall() {
+  int choice = random(5); // 0..4
+  Serial.print("Preset chosen: ");
+  Serial.println(choice);
+
+  switch (choice) {
+    case 0:
+      // Preset 0: steady forward 4s at max-safe speed
+      Serial.println("Preset 0: forward 4s @180");
+      runDirectionFor(4000UL, true, 180);
+      break;
+
+    case 1:
+      // Preset 1: 2s forward fast, 2s backward medium
+      Serial.println("Preset 1: forward 2s @160, backward 2s @120");
+      runDirectionFor(2000UL, true, 160);
+      runDirectionFor(2000UL, false, 120);
+      break;
+
+    case 2:
+      // Preset 2: four 1s bursts alternating forward/back at two speeds
+      Serial.println("Preset 2: fwd 1s@140, back 1s@140, fwd 1s@90, back 1s@90");
+      runDirectionFor(1000UL, true, 140);
+      runDirectionFor(1000UL, false, 140);
+      runDirectionFor(1000UL, true, 90);
+      runDirectionFor(1000UL, false, 90);
+      break;
+
+    case 3:
+      // Preset 3: ramp/hold style: gentle -> fast forward, then fast -> gentle backward
+      Serial.println("Preset 3: fwd 1s@80, fwd 1s@140, back 1s@140, back 1s@80");
+      runDirectionFor(1000UL, true, 80);
+      runDirectionFor(1000UL, true, 140);
+      runDirectionFor(1000UL, false, 140);
+      runDirectionFor(1000UL, false, 80);
+      break;
+
+    case 4:
+      // Preset 4: short pulses: 4 alternating 0.5s pulses (total 4s = 8 pulses of 0.5s? we'll do 8*0.5)
+      Serial.println("Preset 4: 8 x 0.5s pulses alternating, speeds 180/120");
+      // We'll do 8 pulses of 500ms (alternating direction and alternating speeds)
+      for (int i = 0; i < 8; ++i) {
+        bool forward = (i % 2 == 0);
+        int speed = (i % 2 == 0) ? 180 : 120;
+        runDirectionFor(500UL, forward, speed);
+      }
+      break;
+  }
+
+  Serial.println("Preset complete.");
+}
+
