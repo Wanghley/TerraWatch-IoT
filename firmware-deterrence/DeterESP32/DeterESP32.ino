@@ -61,7 +61,7 @@ int stepsSeq[4][4] = {
 int stepDelayMs = 5;
 
 const int relayPin = 16;  // pin controlling relay
-const bool RELAY_ACTIVE_LOW = true;  // change to false if your relay is active HIGH
+const bool RELAY_ACTIVE_HIGH = true;  // change to false if your relay is active HIGH
 
 const char *ssid = "ECE449deco";
 const char *password = "ece449$$";
@@ -118,21 +118,42 @@ void setup() {
   Serial.print("[WiFi] Connecting to ");
   Serial.println(ssid);
 
-  // Auto reconnect is set true as default
-  // To set auto connect off, use the following function
-  //    WiFi.setAutoReconnect(false);
-
+  // Disconnect and clean up any previous WiFi state
+  WiFi.disconnect(true);
+  delay(100);
+  
+  // Set WiFi mode and configure
   WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
+  
+  // Begin connection
   WiFi.begin(ssid, password);
 
-  Serial.print("Connecting to WiFi...");
+  Serial.print("Connecting to WiFi");
+  
+  // Add timeout to WiFi connection (30 seconds)
+  unsigned long wifiStartTime = millis();
+  const unsigned long WIFI_TIMEOUT = 30000; // 30 seconds
+  
   while (WiFi.status() != WL_CONNECTED) {
     Serial.print(".");
-    delay(300);
+    delay(500);
+    
+    // Check for timeout
+    if (millis() - wifiStartTime > WIFI_TIMEOUT) {
+      Serial.println("\nWiFi connection timeout!");
+      Serial.println("Retrying WiFi connection...");
+      
+      // Retry connection
+      WiFi.disconnect();
+      delay(1000);
+      WiFi.begin(ssid, password);
+      wifiStartTime = millis();
+    }
   }
 
-  Serial.println("\nConnected!");
-  Serial.print("My IP: ");
+  Serial.println("\nWiFi Connected!");
+  Serial.print("IP Address: ");
   Serial.println(WiFi.localIP());
 
   // Begin UDP listening for STOP message and heartbeats
@@ -327,6 +348,7 @@ void loop() {
   }
 
   String req = client.readStringUntil('\r');
+  client.read(); // consume the '\n' after the request line
   Serial.println("Request:");
   Serial.println(req);
 
@@ -334,6 +356,17 @@ void loop() {
   int contentLength = 0;
   while (client.available()) {
     String line = client.readStringUntil('\r');
+    if (client.available()) {
+      client.read(); // consume the '\n' after each header line
+    }
+    
+    line.trim(); // Remove '\r' and any whitespace
+    
+    if (line.length() == 0) {
+      // Blank line detected - end of headers
+      break;
+    }
+    
     if (line.startsWith("Content-Length:")) {
       // Extract content length value
       int colonIndex = line.indexOf(':');
@@ -341,9 +374,10 @@ void loop() {
         String lengthStr = line.substring(colonIndex + 1);
         lengthStr.trim();
         contentLength = lengthStr.toInt();
+        Serial.print("Content-Length parsed: ");
+        Serial.println(contentLength);
       }
     }
-    if (line == "\n" || line == "\r\n") break;
   }
 
   // Read POST body if present
@@ -378,8 +412,8 @@ void loop() {
     
     if (payload == "light-trigger") {
       Serial.println("Light trigger detected - keeping lights on for 8 seconds");
-      // Use lightFlicker to keep lights on for 8 seconds (8000ms on, 0ms off)
-      lightFlicker(8000, 0);
+      // Use lightFlicker to keep lights on for 5 seconds (5000ms on, 0ms off)
+      lightFlicker(5000, 0);
       Serial.println("Lights turned off");
     } else if (payload == "trigger=1" || payload.length() == 0) {
       // Default deterrent behavior for trigger=1 or empty payload
@@ -505,9 +539,14 @@ int pickRandomTrack() {
 }
 
 void lightFlicker(int onDuration, int offDuration){
-  digitalWrite(relayPin, HIGH);
+  // For active-low relay: LOW = ON, HIGH = OFF
+  // For active-high relay: HIGH = ON, LOW = OFF
+  int onState = RELAY_ACTIVE_HIGH ? LOW : HIGH;
+  int offState = RELAY_ACTIVE_HIGH ? HIGH : LOW;
+  
+  digitalWrite(relayPin, onState);
   delay(onDuration);
-  digitalWrite(relayPin, LOW);
+  digitalWrite(relayPin, offState);
   delay(offDuration);
 }
 

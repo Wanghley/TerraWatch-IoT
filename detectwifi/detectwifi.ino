@@ -6,9 +6,9 @@ const char* password = "ece449$$";
 
 WiFiUDP udp;
 
-const int esp32pin = 32;
+const int lightPin = 14;
 const int orangepipin = 33;
-bool esp32LastPinState = LOW;
+bool lightLastPinState = LOW;
 bool orangepiLastPinState = LOW; 
 
 const unsigned int listenPort = 4210;       // Listening for broadcast
@@ -23,13 +23,13 @@ const char* HEARTBEAT_ACK = "HEARTBEAT_ACK";
 bool is_connected = false;
 unsigned long lastHeartbeatTime = 0;
 const unsigned long HEARTBEAT_TIMEOUT = 10000;  // 10 second timeout
-const unsigned long HTTP_TIMEOUT = 5000;        // 5 second HTTP timeout
+const unsigned long HTTP_TIMEOUT = 5.500;        // 5.5 second HTTP timeout
 
 String senderIP;
 
 void setup() {
   Serial.begin(115200);
-  pinMode(esp32pin, INPUT_PULLDOWN);
+  pinMode(lightPin, INPUT_PULLDOWN);
   pinMode(orangepipin, INPUT_PULLDOWN);
   
   // -----------------------------
@@ -262,28 +262,25 @@ void loop() {
   }
 
   // Monitor pins and send POST when triggered
-  bool esp32CurrentState = digitalRead(esp32pin);
+  bool lightCurrentState = digitalRead(lightPin);
   bool orangepiCurrentState = digitalRead(orangepipin);
   
-  bool esp32PinRising = (esp32CurrentState == HIGH && esp32LastPinState == LOW);
+  bool lightPinRising = (lightCurrentState == HIGH && lightLastPinState == LOW);
   bool orangepiPinRising = (orangepiCurrentState == HIGH && orangepiLastPinState == LOW);
   
-  // Check if both pins just transitioned from LOW to HIGH simultaneously
-  bool bothPinsRising = esp32PinRising && orangepiPinRising;
-  
-  // Send light-trigger when BOTH pins transition from LOW to HIGH simultaneously
-  if (bothPinsRising) {
-    Serial.println("Both pins went HIGH simultaneously -> Sending light-trigger POST");
+  // Send light-trigger when light pin goes HIGH
+  if (lightPinRising) {
+    Serial.println("Light pin went HIGH -> Sending light-trigger POST");
     sendPostRequest("light-trigger");
   }
-  // Send trigger=1 when EITHER pin goes HIGH (from LOW) - only if not both rising
-  else if (esp32PinRising || orangepiPinRising) {
-    Serial.println("Either pin went HIGH -> Sending trigger=1 POST");
+  // Send trigger=1 when orangepi pin goes HIGH (from LOW)
+  else if (orangepiPinRising) {
+    Serial.println("OrangePi pin went HIGH -> Sending trigger=1 POST");
     sendPostRequest("trigger=1");
   }
   
   // Update pin states for next iteration
-  esp32LastPinState = esp32CurrentState;
+  lightLastPinState = lightCurrentState;
   orangepiLastPinState = orangepiCurrentState;
   
   delay(10);
