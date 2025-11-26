@@ -41,12 +41,6 @@ void DeterrentManager::signalSureDetection() {
 }
 
 void DeterrentManager::signalUnsureDetection() {
-    if (_persistent) {
-        drive(true);
-        _currentState = UNSURE_LATCH;
-        if (_debug) Serial.println("DETERRENT: Unsure detection latched ON.");
-        return;
-    }
     if (_currentState != IDLE) return;
     _currentState = UNSURE_PULSE_1;
     _stateStartTime = millis();
@@ -55,10 +49,11 @@ void DeterrentManager::signalUnsureDetection() {
 }
 
 void DeterrentManager::update() {
-    if (_persistent) return; // hold current driven state
+    // if (_persistent) return; // hold current driven state
     if (_currentState == IDLE) return;
     unsigned long now = millis();
     unsigned long elapsed = now - _stateStartTime;
+    // Serial.println(elapsed);
     switch (_currentState) {
         case SURE_PULSE:
             if (elapsed >= PULSE_DURATION) { drive(false); _currentState = IDLE; }

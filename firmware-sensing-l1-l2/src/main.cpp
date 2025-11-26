@@ -61,7 +61,7 @@ LedManager ledManager(LED_BUILTIN, BRIGHTNESS);
 ThermalArrayManager thermalManager(0x68, 0x69, 0x69, Wire, Wire1, SENSOR_DEBUG);
 mmWaveArrayManager mmWaveManager(RADAR1_RX, RADAR1_TX, RADAR2_RX, RADAR2_TX, SENSOR_DEBUG);
 MicManager micManager(0.2, SENSOR_DEBUG);
-DeterrentManager deterrentManager(DETERRENT_PIN, DEBUG, true);
+DeterrentManager deterrentManager(DETERRENT_PIN, DEBUG);
 
 // The AI Engine
 Predictor predictor; 
@@ -200,8 +200,9 @@ void uplinkCoreTask(void *p)
         else
         {
             ledManager.setColor(0, 255, 0); // GREEN
-            deterrentManager.signalUnsureDetection();
-            deterrentManager.deactivate(); 
+            // LOG_PRINTLN("✅ No Threat Detected, sending unsure signal");
+            // deterrentManager.signalUnsureDetection();
+            deterrentManager.deactivate();
         }
     }
 }
@@ -236,6 +237,9 @@ void loop()
         }
         
         esp_task_wdt_delete(NULL);
+        while(deterrentManager.isSignaling()) {
+            deterrentManager.update();
+        }
         sleepManager.goToSleep(); 
         
         // WAKE UP
