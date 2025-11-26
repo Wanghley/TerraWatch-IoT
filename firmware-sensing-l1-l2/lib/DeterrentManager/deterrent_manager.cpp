@@ -26,12 +26,6 @@ bool DeterrentManager::isSignaling() {
 }
 
 void DeterrentManager::signalSureDetection() {
-    if (_persistent) {
-        drive(true);
-        _currentState = SURE_LATCH;
-        if (_debug) Serial.println("DETERRENT: Sure detection latched ON.");
-        return;
-    }
     if (_currentState == IDLE) {
         _currentState = SURE_PULSE;
         _stateStartTime = millis();
