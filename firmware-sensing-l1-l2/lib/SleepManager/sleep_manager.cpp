@@ -16,77 +16,64 @@ void SleepManager::configure() {
     pinMode(_rpir, INPUT);
 
     esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
-    if (_debug) Serial.printf("wake cause code: %d\n", cause);
+    if (_debug) Serial.printf("[Sleep] wake cause code: %d\n", cause);
 
-    switch (cause) {
-        case ESP_SLEEP_WAKEUP_EXT1: {
-            // small settle time and read EXT1 mask
-            delay(50);
-            uint64_t mask = esp_sleep_get_ext1_wakeup_status();
-            _wakeMask = mask;
-            bool l = (mask & (1ULL << _lpir)) != 0;
-            bool c = (mask & (1ULL << _cpir)) != 0;
-            bool r = (mask & (1ULL << _rpir)) != 0;
-            if (_debug) {
-                Serial.printf("Wake reason: EXT1 (mask=0x%llx)\n", mask);
-                Serial.printf("  -> LPIR triggered: %d\n", l);
-                Serial.printf("  -> CPIR triggered: %d\n", c);
-                Serial.printf("  -> RPIR triggered: %d\n", r);
-                Serial.printf("Raw reads: L=%d C=%d R=%d\n",
-                              digitalRead(_lpir), digitalRead(_cpir), digitalRead(_rpir));
-            }
-            break;
+    if (cause == ESP_SLEEP_WAKEUP_EXT1) {
+        delay(50); // settle
+        uint64_t mask = esp_sleep_get_ext1_wakeup_status();
+        _wakeMask = mask;
+        bool l = (mask & (1ULL << _lpir)) != 0;
+        bool c = (mask & (1ULL << _cpir)) != 0;
+        bool r = (mask & (1ULL << _rpir)) != 0;
+        if (_debug) {
+            Serial.printf("[Sleep] EXT1 wake: L=%d C=%d R=%d (mask=0x%llX)\n",
+                          l, c, r, (unsigned long long)mask);
         }
-        case ESP_SLEEP_WAKEUP_EXT0:
-            if (_debug) {
-                Serial.println("Wake reason: EXT0");
-                Serial.printf("Raw reads: L=%d C=%d R=%d\n",
-                              digitalRead(_lpir), digitalRead(_cpir), digitalRead(_rpir));
-            }
-            break;
-        case ESP_SLEEP_WAKEUP_TIMER:
-            if (_debug) Serial.println("Wake reason: TIMER");
-            break;
-        case ESP_SLEEP_WAKEUP_TOUCHPAD:
-            if (_debug) Serial.println("Wake reason: TOUCHPAD");
-            break;
-        case ESP_SLEEP_WAKEUP_UNDEFINED:
-        default:
-            // This is what you see on a POWERON reset
-            if (_debug) Serial.println("Wake reason: POWERON / UNDEFINED");
-            break;
+    } else if (_debug) {
+        Serial.println("[Sleep] Woke from non-EXT1 cause.");
     }
 }
 
-void SleepManager::goToSleep() {
+void SleepManager::goToSleep(uint32_t sleepMs) {
     if (_debug) {
-        Serial.println("SleepManager: arming EXT1 wakeup (pull-down + settle)...");
+        Serial.println("[Sleep] Arming EXT1 wakeup (PIRs)...");
         Serial.flush();
     }
 
-
-    // Wait up to 1s for all PIRs to be LOW (avoid immediate wake)
+    // Wait up to 1s for all PIRs to go LOW to avoid immediate wake
     unsigned long start = millis();
     while (millis() - start < 1000) {
-        int l = digitalRead(_lpir), c = digitalRead(_cpir), r = digitalRead(_rpir);
+        int l = digitalRead(_lpir);
+        int c = digitalRead(_cpir);
+        int r = digitalRead(_rpir);
         if (l == LOW && c == LOW && r == LOW) break;
-        if (_debug) Serial.printf("Waiting for PIR idle: L=%d C=%d R=%d\n", l, c, r);
+        if (_debug) Serial.printf("[Sleep] Waiting for PIR idle: L=%d C=%d R=%d\n", l, c, r);
         delay(50);
     }
 
     uint64_t wakeMask = (1ULL << _lpir) | (1ULL << _cpir) | (1ULL << _rpir);
     esp_sleep_enable_ext1_wakeup(wakeMask, ESP_EXT1_WAKEUP_ANY_HIGH);
+
+    if (sleepMs > 0) {
+        // Convert ms to µs
+        esp_sleep_enable_timer_wakeup((uint64_t)sleepMs * 1000ULL);
+        if (_debug) {
+            Serial.printf("[Sleep] Timer wake enabled: %lu ms\n", (unsigned long)sleepMs);
+        }
+    }
+
     delay(10); // settle after arming
 
     if (_debug) {
-        Serial.println("SleepManager: going to LIGHT sleep (EXT1 enabled)...");
+        Serial.println("[Sleep] Entering LIGHT sleep (EXT1 enabled)...");
         Serial.flush();
     }
-    
-    // --- THIS IS THE FIX ---
+
     // Use light sleep to preserve RAM and running tasks.
     esp_light_sleep_start();
-    
-    // This was the bug; it causes a full reboot, killing your tasks.
-    // esp_deep_sleep_start(); 
+
+    // On return from light sleep, tasks continue.
+    if (_debug) {
+        Serial.println("[Sleep] Woke from light sleep.");
+    }
 }
