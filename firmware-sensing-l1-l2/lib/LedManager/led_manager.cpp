@@ -1,33 +1,31 @@
 #include "led_manager.h"
+#include <Arduino.h>
 
-// Constructor
 LedManager::LedManager(int pin, uint8_t brightness)
   : _pin(pin), _brightness(brightness),
-    _targetR(255), _targetG(255), _targetB(255),
+    _targetR(0), _targetG(0), _targetB(0),
     _initialized(false) {
 }
 
 void LedManager::begin() {
-    if (_initialized) {
-        return;
-    }
+    if (_initialized) return;
+
     pinMode(_pin, OUTPUT);
+    digitalWrite(_pin, LOW);       // WS2812 idle low
+    delay(10);                     // allow power-up stabilization
+    delayMicroseconds(300);        // reset/latch gap before first frame
+
     _initialized = true;
-    setOff();
+    writeColor();                  // push current target (default off)
+    delayMicroseconds(80);         // ensure latch after first write
 }
 
 void LedManager::setBrightness(uint8_t brightness) {
-    if (_brightness == brightness) {
-        return;
-    }
+    // Ignored (no global brightness control)
     _brightness = brightness;
-    writeColor();
 }
 
 void LedManager::setColor(uint8_t r, uint8_t g, uint8_t b) {
-    if (_targetR == r && _targetG == g && _targetB == b) {
-        return;
-    }
     _targetR = r;
     _targetG = g;
     _targetB = b;
@@ -35,14 +33,10 @@ void LedManager::setColor(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 void LedManager::writeColor() {
-    if (!_initialized) {
-        return;
-    }
-    uint8_t scaled_r = (_targetR * _brightness) / 255;
-    uint8_t scaled_g = (_targetG * _brightness) / 255;
-    uint8_t scaled_b = (_targetB * _brightness) / 255;
+    if (!_initialized) return;
 
-    neopixelWrite(_pin, scaled_r, scaled_g, scaled_b);
+    // Directly drive a single NeoPixel on _pin
+    neopixelWrite(_pin, _targetR, _targetG, _targetB);
 }
 
 void LedManager::setOff() {
