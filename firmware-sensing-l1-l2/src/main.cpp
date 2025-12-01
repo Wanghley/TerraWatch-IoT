@@ -45,16 +45,25 @@
 #define RADAR2_TX 17
 
 // =========================================================
-// 🧠 AI THRESHOLDS (REAL-LIFE TUNING)
+// 🧠 AI THRESHOLDS (UPDATED FOR YOUR ACTUAL MODEL)
 // =========================================================
-static constexpr float PROB_THRESHOLD_WEAK   = 0.49f; // >49% -> Likely an animal (Orange Alert)
-static constexpr float PROB_THRESHOLD_STRONG = 0.75f; // >75% -> Definitely an animal (Red Alert)
+// Your actual optimal threshold is 0.49, not 0.73
+// Adjust all thresholds accordingly
+
+// >40%: Likely detection (below optimal to catch edge cases)
+static constexpr float PROB_THRESHOLD_WEAK   = 0.40f; 
+
+// >65%: Confirmed detection (high confidence zone)
+static constexpr float PROB_THRESHOLD_STRONG = 0.65f; 
 
 // HYSTERESIS & STABILITY
-static constexpr float THRESHOLD_TRIGGER = 0.20f; // must exceed to *enter* alarm state
-static constexpr float THRESHOLD_RESET   = 0.10f; // must fall below to *exit* alarm state
-static constexpr int   N_CONSECUTIVE_HITS = 3;    // how many consecutive trigger-level hits required
-static constexpr unsigned long AI_MIN_RETRIGGER_MS = 2000; // ms between new alarm starts
+// Trigger at 0.45, reset at 0.35 to prevent flickering
+static constexpr float THRESHOLD_TRIGGER = 0.45f; 
+static constexpr float THRESHOLD_RESET   = 0.35f; 
+
+// Require 3 consecutive hits for more stability
+static constexpr int   N_CONSECUTIVE_HITS = 3;
+static constexpr unsigned long AI_MIN_RETRIGGER_MS = 2000; 
 
 // Robustness Configs
 #define PIR_DEBOUNCE_MS     150   // PIR must be HIGH for 150ms
@@ -231,6 +240,22 @@ void setup() {
 
     LOG_INFO("System Ready.\n");
     ledManager.setColor(0, 255, 0); // Green idle
+    
+    // LED test sequence
+    delay(500);
+    ledManager.setOff();
+    delay(500);
+    ledManager.setColor(0, 255, 0); // Green idle
+    delay(500);
+    ledManager.setOff();
+    delay(500);
+    ledManager.setColor(0, 255, 0); // Green idle - SETUP MARKER
+    delay(500);
+    ledManager.setOff();
+    
+    LOG_INFO("[System] 🚀 Hardware initialization complete. Starting 45s warmup...\n");
+    
+    esp_task_wdt_reset();
 }
 
 // =========================================================
@@ -339,7 +364,9 @@ void uplinkCoreTask(void *p) {
         unsigned long durAI = millis() - startAI;
 
         // EMA smoothing
-        emaProbability = (0.25f * probability) + (0.75f * emaProbability);
+        // TUNED: Changed alpha from 0.25 to 0.60.
+        // 60% new data, 40% history. This makes it much more responsive.
+        emaProbability = (0.60f * probability) + (0.40f * emaProbability);
 
         // Logging (rate limited)
         static unsigned long lastLog = 0;
@@ -389,6 +416,7 @@ void uplinkCoreTask(void *p) {
         // =====================================================
         //  B. HIGH-LEVEL DECISION
         // =====================================================
+        // Using emaProbability helps filter single-frame glitches
         if (canTriggerNewAlarm && emaProbability > PROB_THRESHOLD_WEAK) {
             if (xSemaphoreTake(stateMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
                 g_alarmActive       = true;
@@ -486,9 +514,33 @@ void loop() {
     }
 
     // --- AWAKE/SLEEP STATE MACHINE ---
-    static unsigned long lastMotionTime  = 0;
+    static unsigned long lastMotionTime  = millis();
     static unsigned long lastSampleTime  = 0;
     static bool sensorsSuspended         = false;
+    static bool setupCompleteFlag        = false;
+    static unsigned long setupStartTime  = millis();
+    static unsigned long lastAlarmResetTime = millis();
+
+    // Force stay awake until setup is complete (after green LED blink + 45 seconds)
+    if (!setupCompleteFlag) {
+        lastMotionTime = millis(); // Keep timer fresh during warmup
+        unsigned long setupElapsed = millis() - setupStartTime;
+        
+        // Setup is complete after 45 seconds (45000 ms)
+        if (setupElapsed > 45000) {
+            setupCompleteFlag = true;
+            LOG_INFO("[System] ✅ Setup complete (%.1fs). Entering normal operation.\n", 
+                     setupElapsed / 1000.0f);
+        } else {
+            // Log progress every 10 seconds during setup
+            static unsigned long lastSetupLog = 0;
+            if ((LOG_LEVEL >= 3) && (millis() - lastSetupLog > 10000)) {
+                LOG_INFO("[System] ⏳ Setup in progress... %lus remaining\n", 
+                         (45000 - setupElapsed) / 1000);
+                lastSetupLog = millis();
+            }
+        }
+    }
 
     if (motionConfirmed) {
         lastMotionTime = millis();
@@ -498,7 +550,8 @@ void loop() {
     if (inDeterCooldown) {
         stayAwake = deterrentManager.isSignaling();
     } else {
-        stayAwake = (millis() - lastMotionTime < KEEP_ALIVE_MS) ||
+        stayAwake = !setupCompleteFlag ||
+                    (millis() - lastMotionTime < KEEP_ALIVE_MS) ||
                     deterrentManager.isSignaling();
     }
 
@@ -520,6 +573,18 @@ void loop() {
             }
         }
     } else {
+        // Check if enough time has passed since last alarm reset (minimum 2 minutes)
+        unsigned long timeSinceLastReset = millis() - lastAlarmResetTime;
+        const unsigned long MIN_RESET_INTERVAL = 120000; // 2 minutes in milliseconds
+        
+        if (timeSinceLastReset < MIN_RESET_INTERVAL) {
+            unsigned long remainingTime = (MIN_RESET_INTERVAL - timeSinceLastReset) / 1000;
+            LOG_INFO("⏱️ Cannot sleep yet. %lus remaining before next sleep allowed.\n", 
+                     remainingTime);
+            delay(1000);
+            return; // Skip sleep, stay awake
+        }
+        
         // Prepare for deep sleep
         ledManager.setColor(0, 0, 255); // Blue idle
         LOG_INFO("\n💤 No motion. Entering Deep Sleep...\n");
@@ -543,8 +608,12 @@ void loop() {
         // On wake
         esp_task_wdt_init(WDT_TIMEOUT_SECONDS, true);
         esp_task_wdt_add(NULL);
-        ledManager.setColor(0, 255, 0);
+        ledManager.setOff();
         LOG_INFO("⏰ Woke up!\n");
+        
+        // Update last reset time after waking
+        lastAlarmResetTime = millis();
+        
         // Sensors will be resumed on next loop() when conditions are met
     }
 }
