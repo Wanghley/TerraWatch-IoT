@@ -61,7 +61,7 @@ int stepsSeq[4][4] = {
 int stepDelayMs = 5;
 
 const int relayPin = 16;  // pin controlling relay
-const bool RELAY_ACTIVE_HIGH = true;  // change to false if your relay is active HIGH
+const bool RELAY_ACTIVE_LOW = true;  // change to false if your relay is active HIGH
 
 const char *ssid = "ECE449deco";
 const char *password = "ece449$$";
@@ -71,6 +71,10 @@ WiFiUDP udp;
 
 unsigned int broadcastPort = 4210;  // Port to send broadcasts to
 unsigned int listenPort = 4211;     // Port to listen for STOP messages
+const int wifiIndicatorPin = 35;
+const int httpRequestIndicatorPin = 26;
+
+bool httpIndicatorState = LOW;
 
 bool broadcasting = true;
 unsigned long lastBroadcast = 0;
@@ -113,7 +117,10 @@ void setup() {
 
   // Relay for light
   pinMode(relayPin, OUTPUT);
-  
+  pinMode(wifiIndicatorPin, OUTPUT);
+  pinMode(httpRequestIndicatorPin, OUTPUT);
+  digitalWrite(httpRequestIndicatorPin, LOW);
+
   Serial.println();
   Serial.print("[WiFi] Connecting to ");
   Serial.println(ssid);
@@ -131,30 +138,27 @@ void setup() {
 
   Serial.print("Connecting to WiFi");
   
-  // Add timeout to WiFi connection (30 seconds)
+  // Add timeout to WiFi connection (10 seconds)
   unsigned long wifiStartTime = millis();
-  const unsigned long WIFI_TIMEOUT = 30000; // 30 seconds
+  const unsigned long WIFI_TIMEOUT = 10000; // 10 seconds
   
   while (WiFi.status() != WL_CONNECTED) {
     Serial.print(".");
     delay(500);
     
-    // Check for timeout
+    // Check for timeout - restart ESP32 if connection fails
     if (millis() - wifiStartTime > WIFI_TIMEOUT) {
-      Serial.println("\nWiFi connection timeout!");
-      Serial.println("Retrying WiFi connection...");
-      
-      // Retry connection
-      WiFi.disconnect();
+      Serial.println("\nWiFi connection timeout after 10 seconds!");
+      Serial.println("Restarting ESP32...");
       delay(1000);
-      WiFi.begin(ssid, password);
-      wifiStartTime = millis();
+      ESP.restart();
     }
   }
 
   Serial.println("\nWiFi Connected!");
   Serial.print("IP Address: ");
   Serial.println(WiFi.localIP());
+  digitalWrite(wifiIndicatorPin, HIGH);
 
   // Begin UDP listening for STOP message and heartbeats
   udp.begin(listenPort);
@@ -166,7 +170,7 @@ void setup() {
     // Check WiFi connection status
     if (WiFi.status() != WL_CONNECTED) {
       Serial.println("WiFi disconnected! Setting is_connected = false");
-      is_connected = false;
+      is_connected = false ;
       // Attempt to reconnect
       WiFi.begin(ssid, password);
       delay(1000);
@@ -235,6 +239,11 @@ void setup() {
   randomSeed(analogRead(3));  // randomize using floating analog input
 
   Serial.println("Initialization complete.");
+}
+
+void toggleHttpIndicator() {
+  httpIndicatorState = !httpIndicatorState;
+  digitalWrite(httpRequestIndicatorPin, httpIndicatorState);
 }
 
 void loop() {
@@ -324,6 +333,8 @@ void loop() {
   }
 
   Serial.println("Client connected");
+  // Toggle indicator when we start handling a new HTTP request
+  toggleHttpIndicator();
   unsigned long clientConnectTime = millis();
 
   // Wait for header with timeout
@@ -335,6 +346,8 @@ void loop() {
       is_connected = false;
       receiverIP = "";
       client.stop();
+      // Toggle back to indicate end of failed HTTP interaction
+      toggleHttpIndicator();
       return;
     }
     // Also check connection status
@@ -343,6 +356,8 @@ void loop() {
       is_connected = false;
       receiverIP = "";
       client.stop();
+      // Toggle back to indicate end of HTTP interaction on WiFi loss
+      toggleHttpIndicator();
       return;
     }
   }
@@ -412,8 +427,8 @@ void loop() {
     
     if (payload == "light-trigger") {
       Serial.println("Light trigger detected - keeping lights on for 8 seconds");
-      // Use lightFlicker to keep lights on for 5 seconds (5000ms on, 0ms off)
-      lightFlicker(5000, 0);
+      // Use lightFlicker to keep lights on for 8 seconds (8000ms on, 0ms off)
+      lightFlicker(8000, 0);
       Serial.println("Lights turned off");
     } else if (payload == "trigger=1" || payload.length() == 0) {
       // Default deterrent behavior for trigger=1 or empty payload
@@ -436,16 +451,14 @@ void loop() {
   client.println("Connection: close");
   client.println();
   client.println("ACK from Sender ESP32");
+  client.flush(); // Ensure response is sent immediately
 
-  // Wait for response to be sent with timeout
-  unsigned long responseStartTime = millis();
-  while (client.connected() && (millis() - responseStartTime < HTTP_TIMEOUT)) {
-    delay(100);
-  }
-
-  delay(10);
+  // Give client time to receive response before closing
+  delay(100);
   client.stop();
   Serial.println("Client disconnected");
+  // Toggle indicator to mark completion of HTTP response
+  toggleHttpIndicator();
   
   // Reset heartbeat timer after successful HTTP interaction
   lastHeartbeatTime = millis();
@@ -541,8 +554,8 @@ int pickRandomTrack() {
 void lightFlicker(int onDuration, int offDuration){
   // For active-low relay: LOW = ON, HIGH = OFF
   // For active-high relay: HIGH = ON, LOW = OFF
-  int onState = RELAY_ACTIVE_HIGH ? LOW : HIGH;
-  int offState = RELAY_ACTIVE_HIGH ? HIGH : LOW;
+  int onState = RELAY_ACTIVE_LOW ? LOW : HIGH;
+  int offState = RELAY_ACTIVE_LOW ? HIGH : LOW;
   
   digitalWrite(relayPin, onState);
   delay(onDuration);

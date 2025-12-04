@@ -7,9 +7,12 @@ const char* password = "ece449$$";
 WiFiUDP udp;
 
 const int lightPin = 14;
+const int httpRequestIndicatorPin = 26; // red LED  
+const int wifiIndicatorPin = 23; // blue LED
 const int orangepipin = 33;
 bool lightLastPinState = LOW;
 bool orangepiLastPinState = LOW; 
+bool httpIndicatorState = LOW;
 
 const unsigned int listenPort = 4210;       // Listening for broadcast
 const unsigned int senderResponsePort = 4211;  // Port where sender listens for STOP
@@ -31,6 +34,8 @@ void setup() {
   Serial.begin(115200);
   pinMode(lightPin, INPUT_PULLDOWN);
   pinMode(orangepipin, INPUT_PULLDOWN);
+  pinMode(httpRequestIndicatorPin, OUTPUT);
+  digitalWrite(httpRequestIndicatorPin, LOW);
   
   // -----------------------------
   // Connect to WiFi
@@ -113,6 +118,11 @@ void setup() {
   }
 }
 
+void toggleHttpIndicator() {
+  httpIndicatorState = !httpIndicatorState;
+  digitalWrite(httpRequestIndicatorPin, httpIndicatorState);
+}
+
 void sendPostRequest(String payload) {
   WiFiClient client;
   unsigned long connectStartTime = millis();
@@ -123,6 +133,9 @@ void sendPostRequest(String payload) {
       Serial.println("HTTP connection timeout!");
       is_connected = false;
       senderIP = "";
+      if (httpIndicatorState == HIGH) {
+        toggleHttpIndicator();
+      }
       return;
     }
     delay(100);
@@ -131,11 +144,17 @@ void sendPostRequest(String payload) {
       Serial.println("WiFi disconnected during connection attempt!");
       is_connected = false;
       senderIP = "";
+      if (httpIndicatorState == HIGH) {
+        toggleHttpIndicator();
+      }
       return;
     }
   }
 
   unsigned long requestStartTime = millis();
+
+  // Toggle indicator for outgoing HTTP request
+  toggleHttpIndicator();
 
   // --- POST REQUEST ---
   client.println("POST / HTTP/1.1");
@@ -153,6 +172,8 @@ void sendPostRequest(String payload) {
       client.stop();
       is_connected = false;
       senderIP = "";
+      // Toggle back to indicate end of HTTP activity on timeout
+      toggleHttpIndicator();
       return;
     }
     delay(100);
@@ -162,6 +183,8 @@ void sendPostRequest(String payload) {
       is_connected = false;
       senderIP = "";
       client.stop();
+      // Toggle back to indicate end of HTTP activity on WiFi loss
+      toggleHttpIndicator();
       return;
     }
   }
@@ -174,6 +197,9 @@ void sendPostRequest(String payload) {
 
   client.stop();
   Serial.println("POST complete");
+  
+  // Toggle indicator for completed HTTP response
+  toggleHttpIndicator();
   
   // Reset heartbeat timer after successful HTTP interaction
   lastHeartbeatTime = millis();
