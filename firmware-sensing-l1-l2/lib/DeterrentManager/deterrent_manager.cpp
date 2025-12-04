@@ -43,25 +43,65 @@ void DeterrentManager::signalUnsureDetection() {
 }
 
 void DeterrentManager::update() {
-    // if (_persistent) return; // hold current driven state
+    
     if (_currentState == IDLE) return;
+    
     unsigned long now = millis();
     unsigned long elapsed = now - _stateStartTime;
-    // Serial.println(elapsed);
+    
+    if (_debug) {
+        static unsigned long lastDebugLog = 0;
+        if (now - lastDebugLog > 100) {
+            Serial.printf("DETERRENT: State=%d, Elapsed=%lu\n", (int)_currentState, elapsed);
+            lastDebugLog = now;
+        }
+    }
+    
     switch (_currentState) {
         case SURE_PULSE:
-            if (elapsed >= PULSE_DURATION) { drive(false); _currentState = IDLE; }
+            if (elapsed >= PULSE_DURATION) {
+                drive(false);
+                _currentState = IDLE;
+                if (_debug) Serial.println("DETERRENT: Sure pulse complete, returning to IDLE.");
+            }
             break;
+            
         case UNSURE_PULSE_1:
-            if (elapsed >= PULSE_DURATION) { drive(false); _currentState = UNSURE_PAUSE; _stateStartTime = now; }
+            if (elapsed >= PULSE_DURATION) {
+                drive(false);
+                _currentState = UNSURE_PAUSE;
+                _stateStartTime = now;
+                if (_debug) Serial.println("DETERRENT: Unsure pulse 1 complete, starting pause.");
+            }
             break;
+            
         case UNSURE_PAUSE:
-            if (elapsed >= PAUSE_DURATION) { drive(true); _currentState = UNSURE_PULSE_2; _stateStartTime = now; }
+            if (elapsed >= PAUSE_DURATION) {
+                drive(true);
+                _currentState = UNSURE_PULSE_2;
+                _stateStartTime = now;
+                if (_debug) Serial.println("DETERRENT: Pause complete, starting unsure pulse 2.");
+            }
             break;
+            
         case UNSURE_PULSE_2:
-            if (elapsed >= PULSE_DURATION) { drive(false); _currentState = IDLE; }
+            if (elapsed >= PULSE_DURATION) {
+                drive(false);
+                _currentState = IDLE;
+                if (_debug) Serial.println("DETERRENT: Unsure pulse 2 complete, returning to IDLE.");
+            }
             break;
-        default: break;
+            
+        case SURE_LATCH:
+            // Stay driven high
+            break;
+            
+        case UNSURE_LATCH:
+            // Stay driven high
+            break;
+            
+        default:
+            break;
     }
 }
 

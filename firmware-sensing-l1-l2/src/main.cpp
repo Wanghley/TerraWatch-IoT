@@ -11,7 +11,6 @@
 // --- KEY IMPORTS ---
 #include "shared_types.h"
 #include "predictor.h"
-
 #include "sleep_manager.h"
 #include "led_manager.h"
 #include "thermal_array_manager.h"
@@ -19,16 +18,28 @@
 #include "mic_manager.h"
 #include "deterrent_manager.h"
 
+// =========================================================
+// OPERATIONAL MODES
+// =========================================================
+enum OperationMode {
+    MODE_AI_SURE_ONLY,        // AI enabled, fire only on SURE (EMA >= 0.75)
+    MODE_AI_UNSURE_ENABLED,   // AI enabled, fire on both SURE and UNSURE
+    MODE_PIR_UNSURE_ONLY,     // PIR-triggered, always send UNSURE signal
+    MODE_PIR_SURE_ONLY,       // PIR-triggered, always send SURE signal
+    MODE_RAW_DATA_COLLECTION  // Raw sensor data collection (NO AI, NO sleep, continuous streaming)
+};
+
+// =========== SELECT OPERATING MODE HERE ===========
+static constexpr OperationMode OPERATING_MODE = MODE_PIR_UNSURE_ONLY;
+// ==================================================
+
 // ====== USER CONFIG ======
 // PIR pins
 #define LPIR 12
 #define CPIR 13
 #define RPIR 14
 
-// LED brightness (passed to LedManager, but your current implementation ignores it)
 #define BRIGHTNESS 10
-
-// Watchdog timeout
 #define WDT_TIMEOUT_SECONDS 120
 
 // I2C & PIN DEFS
@@ -44,39 +55,33 @@
 #define RADAR2_RX 18
 #define RADAR2_TX 17
 
+// Raw data collection settings
+#define RAW_DATA_SAMPLE_RATE_MS 20  // 50Hz sampling
+#define RAW_DATA_SERIAL_BAUD 115200  // High-speed for continuous data
+
 // =========================================================
-// 🧠 AI THRESHOLDS (UPDATED FOR YOUR ACTUAL MODEL)
+// AI THRESHOLDS
 // =========================================================
-// Your actual optimal threshold is 0.49, not 0.73
-// Adjust all thresholds accordingly
+static constexpr float PROB_THRESHOLD_TRIGGER = 0.40f;   // Hit counter increment
+static constexpr float PROB_THRESHOLD_RESET   = 0.25f;   // Reset counter
+static constexpr float PROB_THRESHOLD_WEAK    = 0.60f;   // UNSURE signal threshold
+static constexpr float PROB_THRESHOLD_STRONG  = 0.75f;   // SURE signal threshold
 
-// >40%: Likely detection (below optimal to catch edge cases)
-static constexpr float PROB_THRESHOLD_WEAK   = 0.40f; 
+// Hit counter & timing
+static constexpr int   N_CONSECUTIVE_HITS = 1;
+static constexpr unsigned long AI_MIN_RETRIGGER_MS = 1500;
 
-// >65%: Confirmed detection (high confidence zone)
-static constexpr float PROB_THRESHOLD_STRONG = 0.65f; 
-
-// HYSTERESIS & STABILITY
-// Trigger at 0.45, reset at 0.35 to prevent flickering
-static constexpr float THRESHOLD_TRIGGER = 0.45f; 
-static constexpr float THRESHOLD_RESET   = 0.35f; 
-
-// Require 3 consecutive hits for more stability
-static constexpr int   N_CONSECUTIVE_HITS = 3;
-static constexpr unsigned long AI_MIN_RETRIGGER_MS = 2000; 
-
-// Robustness Configs
-#define PIR_DEBOUNCE_MS     150   // PIR must be HIGH for 150ms
-#define KEEP_ALIVE_MS       5000  // Stay awake 5s after last motion
-#define AI_SAMPLE_RATE_MS   333   // ~3 samples/sec
-
-// Cooldowns
-#define DETER_COOLDOWN_MS   10000 // Ignore PIR for 10s after any deterrent
+// Timing configs
+#define PIR_DEBOUNCE_MS     200
+#define KEEP_ALIVE_MS       5000
+#define AI_SAMPLE_RATE_MS   333
+#define DETER_COOLDOWN_MS   15000
+#define PIR_ONLY_COOLDOWN_MS 8000
+#define SLEEP_TIMEOUT_MS    30000
 
 // =========================================================
 // LOGGING CONFIG
 // =========================================================
-// Levels: 0=OFF, 1=ERROR, 2=WARN, 3=INFO, 4=DEBUG
 #ifndef LOG_LEVEL
   #define LOG_LEVEL 4
 #endif
@@ -105,156 +110,349 @@ static constexpr unsigned long AI_MIN_RETRIGGER_MS = 2000;
   #define LOG_DEBUG(...)
 #endif
 
-// --- GLOBALS ---
-QueueHandle_t packetQueue      = nullptr;
-TaskHandle_t  sensorTaskHandle = nullptr;
-TaskHandle_t  uplinkTaskHandle = nullptr;
+// =========================================================
+// GLOBALS
+// =========================================================
+QueueHandle_t packetQueue = nullptr;
+TaskHandle_t sensorTaskHandle = nullptr;
+TaskHandle_t uplinkTaskHandle = nullptr;
 
-// Predictor mutex
 SemaphoreHandle_t predictorMutex = nullptr;
-
-// State mutex to protect RTC/shared state
 SemaphoreHandle_t stateMutex = nullptr;
 
-// [RTC] State Tracking (survives deep sleep reset)
-RTC_DATA_ATTR volatile unsigned long g_lastDeterrentTime   = 0; // last time deterrent fired
-RTC_DATA_ATTR volatile bool          g_alarmActive         = false;
-RTC_DATA_ATTR volatile int           g_consecutiveHits     = 0;
-RTC_DATA_ATTR volatile unsigned long g_lastAlarmChangeMs   = 0;
+// [RTC] State Tracking
+RTC_DATA_ATTR volatile unsigned long g_lastDeterrentTime = 0;
+RTC_DATA_ATTR volatile bool g_alarmActive = false;
+RTC_DATA_ATTR volatile int g_consecutiveHits = 0;
+RTC_DATA_ATTR volatile unsigned long g_lastAlarmChangeMs = 0;
+RTC_DATA_ATTR volatile unsigned long g_bootTime = 0;
+RTC_DATA_ATTR volatile unsigned int g_wakeCount = 0;
 
 // Managers
-SleepManager        sleepManager(LPIR, CPIR, RPIR, true);
-LedManager          ledManager(RGB_BUILTIN, BRIGHTNESS);
+SleepManager sleepManager(LPIR, CPIR, RPIR, true);
+LedManager ledManager(RGB_BUILTIN, BRIGHTNESS);
 ThermalArrayManager thermalManager(0x68, 0x69, 0x69, Wire, Wire1, false);
-mmWaveArrayManager  mmWaveManager(RADAR1_RX, RADAR1_TX, RADAR2_RX, RADAR2_TX, false);
-MicManager          micManager(0.2, false);
-DeterrentManager    deterrentManager(DETERRENT_PIN, (LOG_LEVEL >= 4));
-
-// The AI Engine
+mmWaveArrayManager mmWaveManager(RADAR1_RX, RADAR1_TX, RADAR2_RX, RADAR2_TX, false);
+MicManager micManager(0.2, false);
+DeterrentManager deterrentManager(DETERRENT_PIN, (LOG_LEVEL >= 4));
 Predictor predictor;
 
 // Task Prototypes
 void sensorCoreTask(void *p);
 void uplinkCoreTask(void *p);
+void rawDataCollectionLoop();
 
-// [HELPER] Flush UART Buffers to prevent 'atof' crashes on resume
-static void flushUARTs() {
-    if (Serial1) {
-        while (Serial1.available() > 0) { Serial1.read(); }
-    }
-    if (Serial2) {
-        while (Serial2.available() > 0) { Serial2.read(); }
+// =========================================================
+// HELPER: Get operation mode name
+// =========================================================
+const char* getModeString() {
+    switch (OPERATING_MODE) {
+        case MODE_AI_SURE_ONLY:        return "AI (SURE only)";
+        case MODE_AI_UNSURE_ENABLED:   return "AI (SURE+UNSURE)";
+        case MODE_PIR_UNSURE_ONLY:     return "PIR (UNSURE only)";
+        case MODE_PIR_SURE_ONLY:       return "PIR (SURE only)";
+        case MODE_RAW_DATA_COLLECTION: return "RAW DATA COLLECTION";
+        default:                        return "UNKNOWN";
     }
 }
 
-// Safe time-diff helper (millis wraparound safe)
-static inline bool timeSinceLessThan(unsigned long prev, unsigned long duration_ms) {
-    unsigned long now = millis();
-    return (now - prev) < duration_ms;
+// =========================================================
+// HELPER: Enhanced UART Flush with Timeout
+// =========================================================
+static void fullSystemFlush() {
+    unsigned long start = millis();
+    const unsigned long FLUSH_TIMEOUT = 500;
+    
+    while (Serial1.available() > 0 && (millis() - start < FLUSH_TIMEOUT)) {
+        Serial1.read();
+    }
+    
+    start = millis();
+    while (Serial2.available() > 0 && (millis() - start < FLUSH_TIMEOUT)) {
+        Serial2.read();
+    }
+    
+    delay(50);
+    
+    start = millis();
+    while ((Serial1.available() > 0 || Serial2.available() > 0) && 
+           (millis() - start < FLUSH_TIMEOUT)) {
+        if (Serial1.available()) Serial1.read();
+        if (Serial2.available()) Serial2.read();
+    }
+    
+    LOG_DEBUG("[System] UART buffers flushed\n");
+}
+
+// =========================================================
+// HELPER: Graceful Task Suspension
+// =========================================================
+static void suspendAllTasks() {
+    if (sensorTaskHandle != NULL) {
+        LOG_DEBUG("[Sleep] Suspending sensor task...\n");
+        vTaskSuspend(sensorTaskHandle);
+    }
+    if (uplinkTaskHandle != NULL && (OPERATING_MODE == MODE_AI_SURE_ONLY || 
+                                      OPERATING_MODE == MODE_AI_UNSURE_ENABLED)) {
+        LOG_DEBUG("[Sleep] Suspending uplink task...\n");
+        vTaskSuspend(uplinkTaskHandle);
+    }
+}
+
+// =========================================================
+// HELPER: Resume All Tasks
+// =========================================================
+static void resumeAllTasks() {
+    fullSystemFlush();
+    
+    if (sensorTaskHandle != NULL) {
+        LOG_DEBUG("[Sleep] Resuming sensor task...\n");
+        vTaskResume(sensorTaskHandle);
+    }
+    if (uplinkTaskHandle != NULL && (OPERATING_MODE == MODE_AI_SURE_ONLY || 
+                                      OPERATING_MODE == MODE_AI_UNSURE_ENABLED)) {
+        LOG_DEBUG("[Sleep] Resuming uplink task...\n");
+        vTaskResume(uplinkTaskHandle);
+    }
+}
+
+// =========================================================
+// RAW DATA COLLECTION MODE
+// =========================================================
+void rawDataCollectionLoop() {
+    LOG_INFO("\n=== RAW DATA COLLECTION MODE ===\n");
+    LOG_INFO("Sampling at %.1f Hz\n", 1000.0f / RAW_DATA_SAMPLE_RATE_MS);
+    LOG_INFO("Streaming raw JSON to Serial at %d baud\n", RAW_DATA_SERIAL_BAUD);
+    LOG_INFO("Commands: 'STOP' to halt, 'RESET' to restart\n\n");
+
+    ledManager.setColor(0, 255, 255);  // Cyan = data collection
+
+    unsigned long lastSampleTime = millis();
+    bool isRunning = true;
+
+    // Disable WDT for raw collection mode
+    esp_task_wdt_deinit();
+
+    while (isRunning) {
+        // Check for serial commands
+        if (Serial.available()) {
+            String cmd = Serial.readStringUntil('\n');
+            cmd.trim();
+            cmd.toUpperCase();
+
+            if (cmd == "STOP") {
+                LOG_INFO("\n📋 Data collection stopped by user\n");
+                isRunning = false;
+                break;
+            } else if (cmd == "RESET") {
+                LOG_INFO("🔄 Resetting and continuing...\n");
+                lastSampleTime = millis();
+            } else if (cmd.startsWith("RATE")) {
+                // RATE <ms> to change sample rate
+                int spaceIdx = cmd.indexOf(' ');
+                if (spaceIdx != -1) {
+                    String rateStr = cmd.substring(spaceIdx + 1);
+                    int newRate = rateStr.toInt();
+                    if (newRate > 0 && newRate < 10000) {
+                        LOG_INFO("Sample rate changed to %d ms (%.1f Hz)\n", 
+                                 newRate, 1000.0f / newRate);
+                    }
+                }
+            }
+        }
+
+        // Sample at configured rate
+        if (millis() - lastSampleTime >= RAW_DATA_SAMPLE_RATE_MS) {
+            // Read all sensors
+            thermalManager.readRotated();
+            ThermalReadings thermal = thermalManager.getObject();
+            
+            mmWaveManager.update();
+            RadarData r1 = mmWaveManager.getRadar1();
+            RadarData r2 = mmWaveManager.getRadar2();
+            
+            double leftMic = 0, rightMic = 0;
+            micManager.read(leftMic, rightMic);
+
+            // Build JSON with raw data
+            StaticJsonDocument<2048> doc;
+            doc["timestamp"] = millis();
+
+            // Thermal array data (all 3 sensors, 64 pixels each)
+            JsonObject thermalObj = doc.createNestedObject("thermal");
+            JsonArray leftArr = thermalObj.createNestedArray("left");
+            JsonArray centerArr = thermalObj.createNestedArray("center");
+            JsonArray rightArr = thermalObj.createNestedArray("right");
+            
+            for (int i = 0; i < 64; i++) {
+                leftArr.add(serialized(String(thermal.left[i], 2)));
+                centerArr.add(serialized(String(thermal.center[i], 2)));
+                rightArr.add(serialized(String(thermal.right[i], 2)));
+            }
+
+            // mmWave radar data
+            JsonObject radarObj = doc.createNestedObject("mmWave");
+            
+            JsonObject r1Obj = radarObj.createNestedObject("R1");
+            r1Obj["numTargets"] = r1.numTargets;
+            r1Obj["range_cm"] = r1.range_cm;
+            r1Obj["speed_ms"] = serialized(String(r1.speed_ms, 2));
+            r1Obj["energy"] = r1.energy;
+            r1Obj["valid"] = r1.isValid;
+
+            JsonObject r2Obj = radarObj.createNestedObject("R2");
+            r2Obj["numTargets"] = r2.numTargets;
+            r2Obj["range_cm"] = r2.range_cm;
+            r2Obj["speed_ms"] = serialized(String(r2.speed_ms, 2));
+            r2Obj["energy"] = r2.energy;
+            r2Obj["valid"] = r2.isValid;
+
+            // Microphone data
+            JsonObject micObj = doc.createNestedObject("mic");
+            micObj["left"] = serialized(String(leftMic, 4));
+            micObj["right"] = serialized(String(rightMic, 4));
+
+            // Serialize and send
+            serializeJson(doc, Serial);
+            Serial.println();
+
+            lastSampleTime = millis();
+        }
+
+        // Prevent watchdog
+        delay(1);
+    }
+
+    // Cleanup on exit
+    LOG_INFO("🛑 Exiting raw data collection mode\n");
+    ledManager.setColor(255, 0, 0);
+    delay(1000);
+    ledManager.setOff();
+
+    // Reinitialize WDT
+    esp_task_wdt_init(WDT_TIMEOUT_SECONDS, true);
+    esp_task_wdt_add(NULL);
 }
 
 // =========================================================
 // SETUP
 // =========================================================
 void setup() {
-    Serial.begin(115200);
+    // For raw data mode, use high baud rate
+    if (OPERATING_MODE == MODE_RAW_DATA_COLLECTION) {
+        Serial.begin(RAW_DATA_SERIAL_BAUD);
+    } else {
+        Serial.begin(115200);
+    }
     delay(500);
 
-    // Basic pin directions
+    if (g_bootTime == 0) {
+        g_bootTime = millis();
+        g_wakeCount = 0;
+    }
+    g_wakeCount++;
+
     pinMode(LPIR, INPUT);
     pinMode(CPIR, INPUT);
     pinMode(RPIR, INPUT);
     pinMode(DETERRENT_PIN, OUTPUT);
 
-    // Init Watchdog
     esp_task_wdt_init(WDT_TIMEOUT_SECONDS, true);
     esp_task_wdt_add(NULL);
 
-    LOG_INFO("\n--- Booting TerraWatch AI 2.0 ---\n");
+    LOG_INFO("\n--- TerraWatch AI 3.0 ---\n");
+    LOG_INFO("Wake #%u | Mode: %s | Heap: %u bytes\n", g_wakeCount, getModeString(), esp_get_free_heap_size());
     LOG_INFO("Log level: %d\n", LOG_LEVEL);
 
-    // predictor mutex
-    predictorMutex = xSemaphoreCreateMutex();
-    if (!predictorMutex) {
-        LOG_WARN("predictor mutex allocation failed.\n");
-    }
+    // ===== IMMEDIATE ENTRY FOR RAW DATA MODE =====
+    if (OPERATING_MODE == MODE_RAW_DATA_COLLECTION) {
+        ledManager.begin();
+        thermalManager.begin(T0_SDA, T0_SCL, T1_SDA, T1_SCL);
+        mmWaveManager.begin();
+        micManager.begin();
 
-    // state mutex
-    stateMutex = xSemaphoreCreateMutex();
-    if (!stateMutex) {
-        LOG_ERROR("state mutex creation failed. Halting.\n");
-        while (1) {
-            delay(1000);
-        }
-    }
+        LOG_INFO("Thermal init complete\n");
+        LOG_INFO("mmWave init complete\n");
+        LOG_INFO("Mic init complete\n");
+        delay(500);
 
-    // Initialize AI first
-    LOG_INFO("[System] Allocating AI Memory...\n");
-    if (!predictor.begin()) {
-        LOG_ERROR("AI Failed to Initialize. Halting.\n");
+        // Enter raw data collection immediately
+        rawDataCollectionLoop();
+
+        // If we exit, loop infinitely with error state
         while (1) {
             ledManager.setColor(255, 0, 0);
-            delay(100);
-            ledManager.setColor(0, 0, 0);
-            delay(100);
+            delay(500);
+            ledManager.setOff();
+            delay(500);
         }
     }
-    LOG_INFO("AI Neural Network Ready.\n");
 
-    // Initialize hardware
+    // ===== NORMAL INITIALIZATION FOR OTHER MODES =====
+    esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+    switch (wakeup_reason) {
+        case ESP_SLEEP_WAKEUP_EXT1:
+            LOG_INFO("💤→ Woke from PIR interrupt (EXT1)\n");
+            break;
+        case ESP_SLEEP_WAKEUP_TIMER:
+            LOG_INFO("💤→ Woke from timer\n");
+            break;
+        default:
+            LOG_INFO("💤→ Cold boot or unknown wake source (%d)\n", wakeup_reason);
+            break;
+    }
+
+    predictorMutex = xSemaphoreCreateMutex();
+    if (!predictorMutex) LOG_WARN("Predictor mutex creation failed.\n");
+
+    stateMutex = xSemaphoreCreateMutex();
+    if (!stateMutex) {
+        LOG_ERROR("State mutex creation failed. Halting.\n");
+        while (1) delay(1000);
+    }
+
+    if (OPERATING_MODE == MODE_AI_SURE_ONLY || OPERATING_MODE == MODE_AI_UNSURE_ENABLED) {
+        LOG_INFO("[System] Allocating AI Memory...\n");
+        if (!predictor.begin()) {
+            LOG_ERROR("AI Failed to Initialize. Halting.\n");
+            while (1) {
+                ledManager.setColor(255, 0, 0);
+                delay(100);
+                ledManager.setOff();
+                delay(100);
+            }
+        }
+        LOG_INFO("AI Neural Network Ready.\n");
+    } else {
+        LOG_INFO("AI disabled (PIR-only mode).\n");
+    }
+
     sleepManager.configure();
     ledManager.begin();
 
-    if (LOG_LEVEL >= 4) {
-        LOG_DEBUG("[LED] Running LED Test...\n");
-        ledManager.setColor(255, 0, 0);
-        LOG_DEBUG("  -> Red\n");
-        delay(500);
-        ledManager.setColor(0, 255, 0);
-        LOG_DEBUG("  -> Green\n");
-        delay(500);
-        ledManager.setColor(0, 0, 255);
-        LOG_DEBUG("  -> Blue\n");
-        delay(500);
-        ledManager.setOff();
-        LOG_DEBUG("  -> Off\n");
-    }
-
     bool thermalOk = thermalManager.begin(T0_SDA, T0_SCL, T1_SDA, T1_SCL);
-    if (!thermalOk) {
-        LOG_WARN("[thermal] Thermal sensors unavailable. Using zeros.\n");
+    if (!thermalOk && (OPERATING_MODE == MODE_AI_SURE_ONLY || OPERATING_MODE == MODE_AI_UNSURE_ENABLED)) {
+        LOG_WARN("[thermal] Thermal sensors unavailable.\n");
     }
 
     mmWaveManager.begin();
     micManager.begin();
     deterrentManager.begin();
-    deterrentManager.enablePersistent(true); // latch behavior
+    deterrentManager.enablePersistent(false);
 
-    // Create Queue and Tasks
     packetQueue = xQueueCreate(1, sizeof(SensorPacket));
 
-    xTaskCreatePinnedToCore(sensorCoreTask, "sensors",
-                            10240, nullptr, 2, &sensorTaskHandle, 0);
-    xTaskCreatePinnedToCore(uplinkCoreTask, "ai_logic",
-                            8192, nullptr, 1, &uplinkTaskHandle, 1);
+    xTaskCreatePinnedToCore(sensorCoreTask, "sensors", 10240, nullptr, 2, &sensorTaskHandle, 0);
+    xTaskCreatePinnedToCore(uplinkCoreTask, "ai_logic", 8192, nullptr, 1, &uplinkTaskHandle, 1);
 
     LOG_INFO("System Ready.\n");
-    ledManager.setColor(0, 255, 0); // Green idle
-    
-    // LED test sequence
-    delay(500);
+    ledManager.setColor(0, 255, 0);
+    delay(200);
     ledManager.setOff();
-    delay(500);
-    ledManager.setColor(0, 255, 0); // Green idle
-    delay(500);
-    ledManager.setOff();
-    delay(500);
-    ledManager.setColor(0, 255, 0); // Green idle - SETUP MARKER
-    delay(500);
-    ledManager.setOff();
+    delay(200);
+    ledManager.setColor(0, 255, 0);
     
-    LOG_INFO("[System] 🚀 Hardware initialization complete. Starting 45s warmup...\n");
-    
+    LOG_INFO("[System] 🚀 Initialization complete.\n");
     esp_task_wdt_reset();
 }
 
@@ -264,38 +462,36 @@ void setup() {
 void sensorCoreTask(void *p) {
     SensorPacket pkt;
     double micL_temp, micR_temp;
-
     esp_task_wdt_add(NULL);
 
+    LOG_INFO("[Sensor Task] Started on Core 0\n");
+
     for (;;) {
-        // service radar regularly
-        uint32_t notificationCount = ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(10));
+        uint32_t notificationCount = ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100));
+        
         mmWaveManager.update();
 
-        if (notificationCount > 0) {
+        if (notificationCount > 0 && (OPERATING_MODE == MODE_AI_SURE_ONLY || OPERATING_MODE == MODE_AI_UNSURE_ENABLED)) {
             LOG_DEBUG("[Sensors] Reading Data...\n");
 
-            // 1. Thermal
             thermalManager.readRotated();
             ThermalReadings thermalData = thermalManager.getObject();
-            memcpy(pkt.thermal_left,   thermalData.left,   sizeof(float) * 64);
+            memcpy(pkt.thermal_left, thermalData.left, sizeof(float) * 64);
             memcpy(pkt.thermal_center, thermalData.center, sizeof(float) * 64);
-            memcpy(pkt.thermal_right,  thermalData.right,  sizeof(float) * 64);
+            memcpy(pkt.thermal_right, thermalData.right, sizeof(float) * 64);
 
-            // 2. Radar
             RadarData r1 = mmWaveManager.getRadar1();
-            pkt.r1.range_cm   = r1.range_cm;
-            pkt.r1.speed_ms   = r1.speed_ms;
-            pkt.r1.energy     = r1.energy;
+            pkt.r1.range_cm = r1.range_cm;
+            pkt.r1.speed_ms = r1.speed_ms;
+            pkt.r1.energy = r1.energy;
             pkt.r1.numTargets = r1.numTargets;
 
             RadarData r2 = mmWaveManager.getRadar2();
-            pkt.r2.range_cm   = r2.range_cm;
-            pkt.r2.speed_ms   = r2.speed_ms;
-            pkt.r2.energy     = r2.energy;
+            pkt.r2.range_cm = r2.range_cm;
+            pkt.r2.speed_ms = r2.speed_ms;
+            pkt.r2.energy = r2.energy;
             pkt.r2.numTargets = r2.numTargets;
 
-            // 3. Mic
             micManager.read(micL_temp, micR_temp);
             pkt.micL = (float)micL_temp;
             pkt.micR = (float)micR_temp;
@@ -320,10 +516,20 @@ void uplinkCoreTask(void *p) {
     esp_task_wdt_add(NULL);
 
     float emaProbability = 0.0f;
+    unsigned long lastValidPacketTime = millis();
+
+    LOG_INFO("[AI Task] Started on Core 1\n");
+
+    if (OPERATING_MODE != MODE_AI_SURE_ONLY && OPERATING_MODE != MODE_AI_UNSURE_ENABLED) {
+        LOG_INFO("[AI Task] Disabled in PIR-only mode. Suspending.\n");
+        vTaskSuspend(NULL);
+    }
 
     for (;;) {
-        if (xQueueReceive(packetQueue, &pkt, portMAX_DELAY) != pdTRUE)
+        if (xQueueReceive(packetQueue, &pkt, pdMS_TO_TICKS(5000)) != pdTRUE) {
+            LOG_WARN("[AI] No sensor data for 5s.\n");
             continue;
+        }
 
         esp_task_wdt_reset();
 
@@ -342,7 +548,6 @@ void uplinkCoreTask(void *p) {
             continue;
         }
 
-        // --- Run Predictor ---
         unsigned long startAI = millis();
         float probability = 0.0f;
         bool predictor_ok = true;
@@ -351,91 +556,100 @@ void uplinkCoreTask(void *p) {
             if (xSemaphoreTake(predictorMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
                 probability = predictor.update(pkt);
                 xSemaphoreGive(predictorMutex);
+                lastValidPacketTime = millis();
             } else {
                 predictor_ok = false;
                 LOG_WARN("Predictor busy, skipping sample.\n");
             }
         } else {
             probability = predictor.update(pkt);
+            lastValidPacketTime = millis();
         }
 
         if (!predictor_ok) continue;
 
         unsigned long durAI = millis() - startAI;
-
-        // EMA smoothing
-        // TUNED: Changed alpha from 0.25 to 0.60.
-        // 60% new data, 40% history. This makes it much more responsive.
         emaProbability = (0.60f * probability) + (0.40f * emaProbability);
 
-        // Logging (rate limited)
+        LOG_DEBUG("Raw: %.1f%% -> EMA: %.1f%%\n", probability * 100.0f, emaProbability * 100.0f);
+
         static unsigned long lastLog = 0;
         if ((millis() - lastLog) > 500 && LOG_LEVEL >= 3) {
-            Serial.printf("🔮 AI Prob: %.1f%% (EMA %.1f%%) (Took %lums)\n",
+            Serial.printf("🔮 AI: Raw=%.1f%% EMA=%.1f%% (Took %lums)\n",
                           probability * 100.0f, emaProbability * 100.0f, durAI);
-            if (probability > 0.05f && probability < PROB_THRESHOLD_WEAK) {
-                Serial.printf("   [NOISE] Background spike: %.1f%%\n",
-                              probability * 100.0f);
-            }
             lastLog = millis();
         }
 
-        // =====================================================
-        //  A. HYSTERESIS + CONSECUTIVE HITS
-        // =====================================================
         now = millis();
 
         if (xSemaphoreTake(stateMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            if (probability >= THRESHOLD_TRIGGER) {
+            if (emaProbability >= PROB_THRESHOLD_TRIGGER) {
                 g_consecutiveHits++;
-            } else if (probability <= THRESHOLD_RESET) {
-                g_consecutiveHits = 0;
+                LOG_DEBUG("Hit %d/%d (EMA: %.1f%%)\n", g_consecutiveHits, N_CONSECUTIVE_HITS, emaProbability * 100.0f);
+            } else if (emaProbability <= PROB_THRESHOLD_RESET) {
+                if (g_consecutiveHits > 0) {
+                    LOG_DEBUG("Hit counter reset (EMA: %.1f%% < %.1f%%)\n", emaProbability * 100.0f, PROB_THRESHOLD_RESET * 100.0f);
+                    g_consecutiveHits = 0;
+                }
                 if (g_alarmActive) {
                     g_alarmActive = false;
                     g_lastAlarmChangeMs = now;
-                    LOG_INFO("Alarm reset (probability below reset threshold).\n");
+                    LOG_INFO("🔓 Alarm reset.\n");
                 }
+            } else {
+                LOG_DEBUG("In hysteresis zone (%.1f%%), maintaining %d hits\n", emaProbability * 100.0f, g_consecutiveHits);
             }
             xSemaphoreGive(stateMutex);
         } else {
-            LOG_WARN("stateMutex busy; skipping state update.\n");
+            LOG_WARN("stateMutex busy.\n");
             continue;
         }
 
-        // Evaluate triggering conditions
         bool canTriggerNewAlarm = false;
         if (xSemaphoreTake(stateMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
             if (!g_alarmActive &&
                 (g_consecutiveHits >= N_CONSECUTIVE_HITS) &&
                 (now - g_lastAlarmChangeMs > AI_MIN_RETRIGGER_MS)) {
                 canTriggerNewAlarm = true;
+                LOG_INFO("✅ Trigger conditions met (hits=%d)\n", g_consecutiveHits);
             }
             xSemaphoreGive(stateMutex);
         }
 
-        // =====================================================
-        //  B. HIGH-LEVEL DECISION
-        // =====================================================
-        // Using emaProbability helps filter single-frame glitches
-        if (canTriggerNewAlarm && emaProbability > PROB_THRESHOLD_WEAK) {
-            if (xSemaphoreTake(stateMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-                g_alarmActive       = true;
-                g_lastAlarmChangeMs = now;
-                g_lastDeterrentTime = now;
-                xSemaphoreGive(stateMutex);
-            } else {
-                LOG_WARN("stateMutex busy; skipped alarm trigger.\n");
-                continue;
+        if (canTriggerNewAlarm) {
+            bool shouldFireSure = false;
+            bool shouldFireUnsure = false;
+
+            if (OPERATING_MODE == MODE_AI_SURE_ONLY) {
+                shouldFireSure = (emaProbability >= PROB_THRESHOLD_STRONG);
+            } else if (OPERATING_MODE == MODE_AI_UNSURE_ENABLED) {
+                shouldFireSure = (emaProbability >= PROB_THRESHOLD_STRONG);
+                shouldFireUnsure = (emaProbability >= PROB_THRESHOLD_WEAK && emaProbability < PROB_THRESHOLD_STRONG);
             }
 
-            if (emaProbability > PROB_THRESHOLD_STRONG) {
-                LOG_INFO("🚨 DETECTED: ANIMAL/HUMAN (STRONG)!\n");
-                ledManager.setColor(255, 0, 0); // Red
-                deterrentManager.signalSureDetection();
-            } else {
-                LOG_INFO("⚠️ Suspicious activity... (UNSURE)\n");
-                ledManager.setColor(255, 255, 0); // Yellow/Orange
-                deterrentManager.signalUnsureDetection();
+            if (shouldFireSure || shouldFireUnsure) {
+                LOG_INFO("🚨 Firing deterrent (EMA: %.1f%%)\n", emaProbability * 100.0f);
+
+                if (xSemaphoreTake(stateMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+                    g_alarmActive = true;
+                    g_lastAlarmChangeMs = now;
+                    g_lastDeterrentTime = now;
+                    g_consecutiveHits = 0;
+                    xSemaphoreGive(stateMutex);
+                } else {
+                    LOG_WARN("stateMutex busy; skipped trigger.\n");
+                    continue;
+                }
+
+                if (shouldFireSure) {
+                    LOG_INFO("💥 SURE detection (%.1f%%)\n", emaProbability * 100.0f);
+                    ledManager.setColor(255, 0, 0);
+                    deterrentManager.signalSureDetection();
+                } else {
+                    LOG_INFO("⚠️ UNSURE detection (%.1f%%)\n", emaProbability * 100.0f);
+                    ledManager.setColor(255, 165, 0);
+                    deterrentManager.signalUnsureDetection();
+                }
             }
         } else {
             bool alarmCopy = false;
@@ -444,7 +658,7 @@ void uplinkCoreTask(void *p) {
                 xSemaphoreGive(stateMutex);
             }
             if (!alarmCopy) {
-                ledManager.setColor(0, 255, 0); // Green idle
+                ledManager.setColor(0, 255, 0);
                 deterrentManager.deactivate();
             }
         }
@@ -455,7 +669,7 @@ void uplinkCoreTask(void *p) {
 }
 
 // =========================================================
-// MAIN LOOP
+// MAIN LOOP - WITH IMPROVED SLEEP LOGIC
 // =========================================================
 void loop() {
     esp_task_wdt_reset();
@@ -464,10 +678,10 @@ void loop() {
     static unsigned long lastStats = 0;
     if ((LOG_LEVEL >= 3) && (millis() - lastStats > 10000)) {
         lastStats = millis();
-        LOG_INFO("[SYS] Free Heap: %u bytes\n", esp_get_free_heap_size());
+        LOG_INFO("[SYS] Heap: %u bytes | Uptime: %lus\n", 
+                 esp_get_free_heap_size(), millis() / 1000);
     }
 
-    // --- PIR + COOLDOWN ---
     bool rawMotion = (digitalRead(LPIR) == HIGH) ||
                      (digitalRead(CPIR) == HIGH) ||
                      (digitalRead(RPIR) == HIGH);
@@ -475,11 +689,13 @@ void loop() {
     unsigned long now = millis();
     bool inDeterCooldown = false;
     unsigned long lastDetCopy = 0;
+    unsigned long effectiveCooldown = (OPERATING_MODE == MODE_PIR_UNSURE_ONLY || OPERATING_MODE == MODE_PIR_SURE_ONLY) 
+        ? PIR_ONLY_COOLDOWN_MS : DETER_COOLDOWN_MS;
 
     if (xSemaphoreTake(stateMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         lastDetCopy = g_lastDeterrentTime;
         if (g_lastDeterrentTime > 0) {
-            inDeterCooldown = (now - g_lastDeterrentTime < DETER_COOLDOWN_MS);
+            inDeterCooldown = (now - g_lastDeterrentTime < effectiveCooldown);
         }
         xSemaphoreGive(stateMutex);
     }
@@ -488,132 +704,127 @@ void loop() {
         rawMotion = false;
         static unsigned long lastCoolLog = 0;
         if ((LOG_LEVEL >= 3) && (now - lastCoolLog > 2000)) {
-            unsigned long remain = (DETER_COOLDOWN_MS - (now - lastDetCopy)) / 1000;
-            LOG_INFO("❄️ COOLDOWN: %lus remaining. Ignoring PIR.\n", remain);
+            unsigned long remain = (effectiveCooldown - (now - lastDetCopy)) / 1000;
+            LOG_INFO("❄️ Cooldown: %lus remaining\n", remain);
             lastCoolLog = now;
         }
     }
 
-    // --- PIR DEBOUNCE ---
     static unsigned long pirHighStartTime = 0;
     static bool motionConfirmed = false;
 
     if (rawMotion) {
         if (pirHighStartTime == 0) {
             pirHighStartTime = millis();
-            LOG_DEBUG("[PIR] Rising Edge Detected\n");
+            LOG_DEBUG("[PIR] Rising edge\n");
         } else if ((millis() - pirHighStartTime) > PIR_DEBOUNCE_MS) {
             if (!motionConfirmed) {
-                LOG_INFO("[PIR] Motion Confirmed (Stable)\n");
+                LOG_INFO("[PIR] Motion confirmed\n");
                 motionConfirmed = true;
+
+                if (OPERATING_MODE == MODE_PIR_UNSURE_ONLY || OPERATING_MODE == MODE_PIR_SURE_ONLY) {
+                    if (xSemaphoreTake(stateMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+                        if (!inDeterCooldown) {
+                            LOG_INFO("🚨 PIR triggered deterrent\n");
+
+                            if (OPERATING_MODE == MODE_PIR_SURE_ONLY) {
+                                LOG_INFO("💥 Sending SURE signal\n");
+                                ledManager.setColor(255, 0, 0);
+                                deterrentManager.signalSureDetection();
+                            } else {
+                                LOG_INFO("⚠️ Sending UNSURE signal\n");
+                                ledManager.setColor(255, 165, 0);
+                                deterrentManager.signalUnsureDetection();
+                            }
+
+                            g_lastDeterrentTime = now;
+                            g_alarmActive = true;
+                        }
+                        xSemaphoreGive(stateMutex);
+                    }
+                }
             }
         }
     } else {
         pirHighStartTime = 0;
-        motionConfirmed  = false;
+        motionConfirmed = false;
     }
 
-    // --- AWAKE/SLEEP STATE MACHINE ---
-    static unsigned long lastMotionTime  = millis();
-    static unsigned long lastSampleTime  = 0;
-    static bool sensorsSuspended         = false;
-    static bool setupCompleteFlag        = false;
-    static unsigned long setupStartTime  = millis();
-    static unsigned long lastAlarmResetTime = millis();
-
-    // Force stay awake until setup is complete (after green LED blink + 45 seconds)
-    if (!setupCompleteFlag) {
-        lastMotionTime = millis(); // Keep timer fresh during warmup
-        unsigned long setupElapsed = millis() - setupStartTime;
-        
-        // Setup is complete after 45 seconds (45000 ms)
-        if (setupElapsed > 45000) {
-            setupCompleteFlag = true;
-            LOG_INFO("[System] ✅ Setup complete (%.1fs). Entering normal operation.\n", 
-                     setupElapsed / 1000.0f);
-        } else {
-            // Log progress every 10 seconds during setup
-            static unsigned long lastSetupLog = 0;
-            if ((LOG_LEVEL >= 3) && (millis() - lastSetupLog > 10000)) {
-                LOG_INFO("[System] ⏳ Setup in progress... %lus remaining\n", 
-                         (45000 - setupElapsed) / 1000);
-                lastSetupLog = millis();
-            }
-        }
-    }
+    static unsigned long lastMotionTime = millis();
+    static unsigned long lastSampleTime = 0;
+    static bool sensorsSuspended = false;
 
     if (motionConfirmed) {
         lastMotionTime = millis();
     }
 
-    bool stayAwake = false;
-    if (inDeterCooldown) {
-        stayAwake = deterrentManager.isSignaling();
-    } else {
-        stayAwake = !setupCompleteFlag ||
-                    (millis() - lastMotionTime < KEEP_ALIVE_MS) ||
-                    deterrentManager.isSignaling();
-    }
+    bool deterrentSignaling = deterrentManager.isSignaling();
+    bool recentCooldown = (inDeterCooldown && (now - lastDetCopy) < 5000);
+    
+    bool stayAwake = (millis() - lastMotionTime < KEEP_ALIVE_MS) || 
+                     deterrentSignaling || 
+                     recentCooldown;
 
     if (stayAwake) {
-        if (!inDeterCooldown) {
-            if (sensorsSuspended && sensorTaskHandle != NULL) {
-                flushUARTs();
-                vTaskResume(sensorTaskHandle);
-                sensorsSuspended = false;
-                LOG_INFO("⚡ Sensors Resumed\n");
-            }
+        if (sensorsSuspended) {
+            resumeAllTasks();
+            sensorsSuspended = false;
+            LOG_INFO("⚡ System awakened\n");
+        }
 
+        if (OPERATING_MODE == MODE_AI_SURE_ONLY || OPERATING_MODE == MODE_AI_UNSURE_ENABLED) {
             if (millis() - lastSampleTime > AI_SAMPLE_RATE_MS) {
-                if (sensorTaskHandle) {
-                    xTaskNotifyGive(sensorTaskHandle);
-                }
+                if (sensorTaskHandle) xTaskNotifyGive(sensorTaskHandle);
                 lastSampleTime = millis();
                 LOG_DEBUG(".");
             }
         }
     } else {
-        // Check if enough time has passed since last alarm reset (minimum 2 minutes)
-        unsigned long timeSinceLastReset = millis() - lastAlarmResetTime;
-        const unsigned long MIN_RESET_INTERVAL = 120000; // 2 minutes in milliseconds
-        
-        if (timeSinceLastReset < MIN_RESET_INTERVAL) {
-            unsigned long remainingTime = (MIN_RESET_INTERVAL - timeSinceLastReset) / 1000;
-            LOG_INFO("⏱️ Cannot sleep yet. %lus remaining before next sleep allowed.\n", 
-                     remainingTime);
-            delay(1000);
-            return; // Skip sleep, stay awake
-        }
-        
-        // Prepare for deep sleep
-        ledManager.setColor(0, 0, 255); // Blue idle
-        LOG_INFO("\n💤 No motion. Entering Deep Sleep...\n");
+        LOG_INFO("\n💤 SLEEP SEQUENCE INITIATED\n");
+        LOG_INFO("  Idle time: %lums | Cooldown: %s | Signaling: %s\n",
+                 now - lastMotionTime, 
+                 inDeterCooldown ? "YES" : "NO",
+                 deterrentSignaling ? "YES" : "NO");
+
+        ledManager.setColor(0, 0, 100);
         Serial.flush();
 
         esp_task_wdt_delete(NULL);
 
-        unsigned long sleepStart = millis();
-        while (deterrentManager.isSignaling() && (millis() - sleepStart < 5000)) {
-            deterrentManager.update();
-            delay(10);
+        if (deterrentSignaling) {
+            LOG_INFO("  Waiting for deterrent to finish...\n");
+            unsigned long sleepStart = millis();
+            while (deterrentManager.isSignaling() && (millis() - sleepStart < 5000)) {
+                deterrentManager.update();
+                delay(10);
+            }
         }
 
-        if (!sensorsSuspended && sensorTaskHandle != NULL) {
-            vTaskSuspend(sensorTaskHandle);
-            sensorsSuspended = true;
-        }
+        suspendAllTasks();
+        sensorsSuspended = true;
 
+        fullSystemFlush();
+        delay(100);
+
+        LOG_INFO("  Entering light sleep (PIR active)...\n");
+        Serial.flush();
+        
         sleepManager.goToSleep(0);
 
-        // On wake
+        LOG_INFO("⏰ WOKE FROM SLEEP\n");
+
         esp_task_wdt_init(WDT_TIMEOUT_SECONDS, true);
         esp_task_wdt_add(NULL);
-        ledManager.setOff();
-        LOG_INFO("⏰ Woke up!\n");
+
+        resumeAllTasks();
+        sensorsSuspended = false;
+
+        lastMotionTime = millis();
+        lastSampleTime = millis();
         
-        // Update last reset time after waking
-        lastAlarmResetTime = millis();
-        
-        // Sensors will be resumed on next loop() when conditions are met
+        ledManager.setColor(0, 255, 0);
+        LOG_INFO("  System resumed and ready\n");
     }
+
+    delay(10);
 }

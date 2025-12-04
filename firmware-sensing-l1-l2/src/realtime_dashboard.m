@@ -22,7 +22,7 @@ pkg load instrument-control
 % Serial Port Settings
 % -------------------------------
 port = "COM6";  % <-- CHANGE THIS to your ESP32's serial port
-baud = 115200;
+baud = 921600;  % HIGH SPEED for raw data streaming mode
 
 % -------------------------------
 % Plotting Buffers
@@ -45,42 +45,49 @@ thermal_matrix = zeros(8, 24); % 8 rows x (8+8+8) cols
 h_thermal = imagesc(thermal_matrix, [20 35]); % [20 35] = Temp range C
 colorbar;
 axis equal tight;
-title('Thermal Heatmap (8x24)');
-xlabel('Sensor Array (Left - Center - Right)');
+title('Thermal Heatmap (8x24) - Left | Center | Right');
+xlabel('Pixel Column');
 ylabel('Pixel Row');
 
 % --- Plot 2: Radar Time-Series ---
 subplot(2, 2, 3); % Bottom-left
 h_radar = plot(1:HISTORY_LENGTH, radar_range_history_L, 'b-', 1:HISTORY_LENGTH, radar_range_history_R, 'r-');
 title('Radar Range (Last 100 cycles)');
-xlabel('Time');
+xlabel('Cycle');
 ylabel('Range (cm)');
-ylim([0 10]); % 25m = 2500cm
-legend('Left Radar', 'Right Radar');
+ylim([0 2500]); % 25m = 2500cm
+legend('Left Radar (R1)', 'Right Radar (R2)', 'location', 'northeastoutside');
 grid on;
 
 % --- Plot 3: Mic Time-Series ---
 subplot(2, 2, 4); % Bottom-right
 h_mic = plot(1:HISTORY_LENGTH, mic_history_L, 'g-', 1:HISTORY_LENGTH, mic_history_R, 'm-');
 title('Microphone Levels (Last 100 cycles)');
-xlabel('Time');
-ylabel('Amplitude (RMS)');
+xlabel('Cycle');
+ylabel('Amplitude');
 ylim auto;
-legend('Left Mic', 'Right Mic');
+legend('Left Mic', 'Right Mic', 'location', 'northeastoutside');
 grid on;
+
+% Add status text
+h_status = text(0.02, 0.98, 'Status: Connecting...', 'Units', 'normalized', ...
+    'VerticalAlignment', 'top', 'HorizontalAlignment', 'left', ...
+    'BackgroundColor', 'yellow', 'FontSize', 10, 'FontWeight', 'bold');
 
 drawnow;
 
 % -------------------------------
-% Connect to Serial
+% --- Connect to Serial
 % -------------------------------
 try
     s = serialport(port, baud);
     configureTerminator(s, "LF"); % '\n' line ending from Serial.println()
-    disp("Successfully connected. Waiting for data...");
+    disp(sprintf("✓ Connected at %d baud. Waiting for ESP32 data...", baud));
+    set(h_status, 'String', sprintf('Connected at %d baud', baud), 'BackgroundColor', 'green', 'TextColor', 'white');
+    pause(1);
 catch err
     disp(err.message);
-    error("Failed to open serial port. Is it correct? Is the device plugged in?");
+    error(sprintf("Failed to open serial port %s. Is it correct? Is the device plugged in?", port));
 end
 
 % -------------------------------
