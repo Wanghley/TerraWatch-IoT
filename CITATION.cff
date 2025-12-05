@@ -1,37 +1,37 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
 cff-version: 1.2.0
-message: "If you use this software, please cite it as follows."
+title: >-
+  TerraWatch-IoT: Automated Pest Detection and Deterrence
+  for Organic Farm Systems
+message: 'If you use this software, please cite it as follows.'
+type: software
 authors:
-  - family-names: "Martins"
-    given-names: "Wanghley"
-  - family-names: "Robinson"
-    given-names: "EJ"
-  - family-names: "Williams"
-    given-names: "Liam"
-  - family-names: "Gurthrie"
-    given-names: "Josh"
-  - family-names: "Coward"
-    given-names: "Jaden"
-  - family-names: "Blue"
-    given-names: "Ryan"
-  - family-names: "Da Paz"
-    given-names: "Vidal"
-  - family-names: "Noguera"
-    given-names: "Rodrigo"
-title: "TerraWatch-IoT"
-subtitle: "Automated Pest Detection and Deterrence for Organic Farm Systems"
+  - family-names: Martins
+    given-names: Wanghley
+  - family-names: Robinson
+    given-names: EJ
+  - family-names: Williams
+    given-names: Liam
+  - family-names: Gurthrie
+    given-names: Josh
+  - family-names: Coward
+    given-names: Jaden
+  - family-names: Blue
+    given-names: Ryan
+  - family-names: Da Paz
+    given-names: Vidal
+  - family-names: Noguera
+    given-names: Rodrigo
+repository-code: 'https://github.com/wanghley/TerraWatch-IoT'
 abstract: >
-  An energy-efficient Internet-of-Things (IoT) platform for automated pest
-  detection and deterrence in organic agriculture. The system integrates
-  multi-modal sensing—including PIR, thermal imaging, mmWave radar, and audio—
-  with on-device TinyML classification and automated field deterrence
-  mechanisms.
-version: 1.1.0
-identifiers:
-  - type: doi
-    value: "10.5281/zenodo.17833426"
-date-released: "2025-12-04"
-license: MIT
-repository-code: "https://github.com/wanghley/TerraWatch-IoT"
+  An energy-efficient Internet-of-Things (IoT) platform for
+  automated pest detection and deterrence in organic
+  agriculture. The system integrates multi-modal
+  sensing—including PIR, thermal imaging, mmWave radar, and
+  audio— with on-device TinyML classification and automated
+  field deterrence mechanisms.
 keywords:
   - iot
   - smart-agriculture
@@ -41,3 +41,6 @@ keywords:
   - orangepi
   - computer-vision
   - embedded-systems
+license: MIT
+version: 1.1.0
+date-released: '2025-12-04'
