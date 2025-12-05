@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-message: "If you use this software, please cite it as below."
+message: "If you use this software, please cite it as follows."
 authors:
   - family-names: "Martins"
     given-names: "Wanghley"
@@ -18,19 +18,26 @@ authors:
   - family-names: "Noguera"
     given-names: "Rodrigo"
 title: "TerraWatch-IoT"
-abstract: "A comprehensive, energy-efficient Internet-of-Things (IoT) pest detection and deterrence system designed to protect crop rows through intelligent, multi-level sensing (PIR, Thermal, mmWave, Audio) and automatic deterrence mechanisms."
-version: 1.0.0
+subtitle: "Automated Pest Detection and Deterrence for Organic Farm Systems"
+abstract: >
+  An energy-efficient Internet-of-Things (IoT) platform for automated pest
+  detection and deterrence in organic agriculture. The system integrates
+  multi-modal sensing—including PIR, thermal imaging, mmWave radar, and audio—
+  with on-device TinyML classification and automated field deterrence
+  mechanisms.
+version: 1.1.0
 identifiers:
   - type: doi
-    value: 10.5281/zenodo.17833426
-date-released: 2024-03-28
+    value: "10.5281/zenodo.17833426"
+date-released: "2025-12-04"
 license: MIT
 repository-code: "https://github.com/wanghley/TerraWatch-IoT"
 keywords:
-  - "iot"
-  - "smart-agriculture"
-  - "pest-control"
-  - "tinyml"
-  - "esp32"
-  - "computer-vision"
-  - "embedded-systems"
+  - iot
+  - smart-agriculture
+  - pest-control
+  - tinyml
+  - esp32
+  - orangepi
+  - computer-vision
+  - embedded-systems
