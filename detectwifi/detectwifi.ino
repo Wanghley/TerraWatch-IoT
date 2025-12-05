@@ -6,7 +6,7 @@ const char* password = "ece449$$";
 
 WiFiUDP udp;
 
-const int lightPin = 14;
+const int lightPin = 27;
 const int httpRequestIndicatorPin = 26; // red LED  
 const int wifiIndicatorPin = 23; // blue LED
 const int orangepipin = 33;
