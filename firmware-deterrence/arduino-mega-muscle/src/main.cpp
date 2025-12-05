@@ -5,11 +5,13 @@
 
 // === PIN DEFINITIONS ===
 #define ENA 22
+
+// REVERTED TO STANDARD LOGICAL ORDER
+// Ensure your Motor Wires are paired correctly on the board (Pair A -> Out1/2, Pair B -> Out3/4)
 #define IN1 23
-// SWAPPED PINS 24/26 TO FIX JITTER
-#define IN2 26  
+#define IN2 24
 #define ENB 25
-#define IN3 24  
+#define IN3 26
 #define IN4 27
 
 // Relay
@@ -30,8 +32,10 @@ const size_t TRACK_COUNT = 5;
 
 // Variables
 int stepsSeq[4][4] = { {1, 0, 1, 0}, {0, 1, 1, 0}, {0, 1, 0, 1}, {1, 0, 0, 1} };
-// Default delay, overridden by chaos modes
-int stepDelayMs = 3; 
+
+// INCREASED DELAY: 3ms might be too fast causing slippage/jitter. 
+// Try 10ms. If smooth, lower to 5ms.
+int stepDelayMs = 50; 
 
 // === FORWARD DECLARATIONS ===
 void deterrent();
@@ -94,7 +98,7 @@ void loop() {
         } else if (cmd == "CMD_LIGHT") {
           // Manual light trigger (8 seconds)
           digitalWrite(relayPin, RELAY_ACTIVE_LOW ? LOW : HIGH);
-          safeDelay(8000); 
+          safeDelay(2000); 
           digitalWrite(relayPin, RELAY_ACTIVE_LOW ? HIGH : LOW);
           clearSerialBuffer(); 
         }
@@ -191,9 +195,9 @@ void runDirectorMode(unsigned long durationMs) {
     switch (currentBehavior) {
       // --- MODE 0: VIOLENT STROBE & SHAKE (Max Intensity) ---
       case 0: 
-        stepInterval = 2500; // 2.5ms (Very Fast)
+        stepInterval = 6000; // Increased from 2500 to 6000 for safety
         // Shake Motor: Switch direction rapidly
-        if (millis() - lastShakeToggle > 60) {
+        if (millis() - lastShakeToggle > 100) { // Slower shake to prevent stalling
            motorDirection = !motorDirection;
            lastShakeToggle = millis();
         }
@@ -208,7 +212,7 @@ void runDirectorMode(unsigned long durationMs) {
 
       // --- MODE 1: THE CREEPER (Slow & Failing Light) ---
       case 1:
-        stepInterval = 12000; // 12ms (Slow, creepy crawl)
+        stepInterval = 15000; // 15ms (Slow, creepy crawl)
         motorDirection = true; // One direction
         // Flickering Lightbulb Effect
         if (millis() > nextLightToggle) {
@@ -225,7 +229,7 @@ void runDirectorMode(unsigned long durationMs) {
 
       // --- MODE 2: THE CHASE (Fast & Bright) ---
       case 2:
-        stepInterval = 3000; // 3ms (Fast)
+        stepInterval = 4000; // 4ms (Fast but safe)
         motorDirection = true; // Run!
         // Light Solid ON (See the monster)
         digitalWrite(relayPin, RELAY_ACTIVE_LOW ? LOW : HIGH);
@@ -234,7 +238,7 @@ void runDirectorMode(unsigned long durationMs) {
       // --- MODE 3: THE GLITCH (Chaos) ---
       case 3:
          // Random Speed changes
-         if (random(0, 100) > 90) stepInterval = random(2000, 8000);
+         if (random(0, 100) > 90) stepInterval = random(5000, 10000);
          // Random Direction
          if (random(0, 100) > 95) motorDirection = !motorDirection;
          // Random Light
