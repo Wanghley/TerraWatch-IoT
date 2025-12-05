@@ -30,11 +30,13 @@ def capture_frame():
     Captures multiple frames and uses the last one to allow autoexposure to settle."""
     import os
     
+    # you can check framerate and resolution using: v4l2-ctl --device=/dev/video1 --list-formats-ext
+    
     # Number of frames to capture for autoexposure settling
     num_frames = 3
     # Framerate to request from camera (set to None to use camera's default)
     # Common values: 5, 10, 15, 30 fps (check what your camera supports)
-    framerate = 10  # 10 fps as supported by camera
+    framerate = 30  # 10 fps as supported by camera
     # Resolution settings
     video_width = 1280
     video_height = 720
@@ -153,7 +155,7 @@ def run_yolo_inference():
 
 
 def save_results(detection_lines):
-    """Save result image and labels to results directory with timestamp."""
+    """Save result image and labels to results directory using event suffixes."""
     # Generate timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
@@ -161,19 +163,19 @@ def save_results(detection_lines):
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     
     # Copy result image (use copy instead of copy2 for speed)
-    result_image = RESULTS_DIR / f"result_{timestamp}.png"
+    event2_image = RESULTS_DIR / f"{timestamp}_event2.png"
     try:
         if YOLO_RESULT.exists():
-            shutil.copy(YOLO_RESULT, result_image)
+            shutil.copy(YOLO_RESULT, event2_image)
         else:
             print(f"Warning: Result image not found at {YOLO_RESULT}")
     except Exception as e:
         print(f"Error copying result image: {e}")
     
-    # Save detection labels
-    result_labels = RESULTS_DIR / f"result_{timestamp}.txt"
+    # Save detection labels (match event2 suffix for downstream consumers)
+    event2_labels = RESULTS_DIR / f"{timestamp}_event2.txt"
     try:
-        with open(result_labels, 'w') as f:
+        with open(event2_labels, 'w') as f:
             f.write('\n'.join(detection_lines))
             if detection_lines:  # Add newline at end if there are lines
                 f.write('\n')

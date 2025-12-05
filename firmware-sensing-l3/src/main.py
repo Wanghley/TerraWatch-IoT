@@ -29,7 +29,8 @@ except ImportError:
 
 # GPIO Configuration (wiringPi numbering)
 GPIO_INPUT_PIN = 2  # wiringPi pin 2 (BCM GPIO 27, physical pin 13)
-GPIO_OUTPUT_PIN = 3  # wiringPi pin 3 (BCM GPIO 22, physical pin 15) - output for animal detection
+GPIO_OUTPUT_PIN_DETERRENCE = 3  # wiringPi pin 3 (BCM GPIO 22, physical pin 15) - output for deterrence
+GPIO_OUTPUT_PIN_LIGHTS = 4  # wiringPi pin 4 (BCM GPIO 23, physical pin 16) - output for lights
 PULSE_TIMEOUT_MS = 80  # Timeout for detecting second rising edge (ms)
 DEBOUNCE_TIME = 0.02  # Minimum seconds between triggers
 
@@ -95,8 +96,8 @@ def get_latest_results_file():
     if not results_dir.exists():
         return None
     
-    # Find all result text files
-    result_files = list(results_dir.glob("result_*.txt"))
+    # Find all result text files (event2 suffix created by cnn.save_results)
+    result_files = list(results_dir.glob("*_event2.txt"))
     if not result_files:
         return None
     
@@ -137,30 +138,55 @@ def capture_frame_only():
     """Capture a frame from the camera without running CNN inference."""
     print(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Event 1 detected - Capturing frame only...")
     try:
-        if cnn.capture_frame():
-            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Frame captured successfully")
-            # Trigger GPIO output (always for Event 1)
-            trigger_gpio_output(100)
-            # Save frame to results with event1 prefix and update output.jpg
-            save_event1_frame()
-            return True
-        else:
-            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Frame capture failed")
-            return False
+        # Set lights HIGH before capturing frame
+        set_lights_high()
+        try:
+            if cnn.capture_frame():
+                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Frame captured successfully")
+                # Trigger deterrence GPIO output (always for Event 1)
+                trigger_deterrence_gpio(100)
+                # Save frame to results with event1 prefix and update output.jpg
+                save_event1_frame()
+                return True
+            else:
+                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Frame capture failed")
+                return False
+        finally:
+            # Always turn lights off after capture attempt
+            set_lights_low()
     except Exception as e:
         print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Error capturing frame: {e}")
+        set_lights_low()  # Ensure lights are turned off on error
         return False
 
 
-def trigger_gpio_output(duration_ms=100):
-    """Set GPIO_OUTPUT_PIN HIGH for specified duration in milliseconds."""
+def trigger_deterrence_gpio(duration_ms=100):
+    """Set GPIO_OUTPUT_PIN_DETERRENCE HIGH for specified duration in milliseconds."""
     try:
-        wiringpi.digitalWrite(GPIO_OUTPUT_PIN, wiringpi.HIGH)
+        wiringpi.digitalWrite(GPIO_OUTPUT_PIN_DETERRENCE, wiringpi.HIGH)
         time.sleep(duration_ms / 1000.0)
-        wiringpi.digitalWrite(GPIO_OUTPUT_PIN, wiringpi.LOW)
-        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] GPIO output pin {GPIO_OUTPUT_PIN} set HIGH for {duration_ms}ms")
+        wiringpi.digitalWrite(GPIO_OUTPUT_PIN_DETERRENCE, wiringpi.LOW)
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] GPIO deterrence pin {GPIO_OUTPUT_PIN_DETERRENCE} set HIGH for {duration_ms}ms")
     except Exception as e:
-        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Error controlling GPIO output: {e}")
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Error controlling GPIO deterrence output: {e}")
+
+
+def set_lights_high():
+    """Set GPIO_OUTPUT_PIN_LIGHTS HIGH."""
+    try:
+        wiringpi.digitalWrite(GPIO_OUTPUT_PIN_LIGHTS, wiringpi.HIGH)
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] GPIO lights pin {GPIO_OUTPUT_PIN_LIGHTS} set HIGH")
+    except Exception as e:
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Error setting GPIO lights HIGH: {e}")
+
+
+def set_lights_low():
+    """Set GPIO_OUTPUT_PIN_LIGHTS LOW."""
+    try:
+        wiringpi.digitalWrite(GPIO_OUTPUT_PIN_LIGHTS, wiringpi.LOW)
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] GPIO lights pin {GPIO_OUTPUT_PIN_LIGHTS} set LOW")
+    except Exception as e:
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Error setting GPIO lights LOW: {e}")
 
 
 def save_event2_result():
@@ -215,54 +241,66 @@ def trigger_cnn():
     Returns True if an animal was detected, False otherwise."""
     print(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Event 2 detected - Running CNN inference...")
     try:
-        result = subprocess.run(
-            [sys.executable, str(CNN_SCRIPT)],
-            cwd=str(SCRIPT_DIR),
-            check=True,
-            capture_output=True,
-            text=True
-        )
-        
-        # Wait a moment for file to be written, then read the latest results file
-        time.sleep(0.1)
-        results_file = get_latest_results_file()
-        
-        detections = []
-        if results_file and results_file.exists():
-            try:
-                with open(results_file, 'r') as f:
-                    detection_lines = f.readlines()
-                detections = parse_detection_labels(detection_lines)
-            except Exception as e:
-                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Warning: Could not read results file: {e}")
-        
-        # Check for human detection
-        if any(det["label"] == "person" and det["confidence"] >= 0.55 for det in detections):
-            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Human Detected")
-        
-        # Check for animal detections
-        animal_labels = ["teddy bear", "toy", "animal", "squirrel", "groundhog", "raccoon", "cat", "dog"]
-        animal_detected = any(det["label"] in animal_labels and det["confidence"] >= 0.30 for det in detections)
-        
-        if animal_detected:
-            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Animal Detected")
-            # Trigger GPIO output pin HIGH for 100ms
-            trigger_gpio_output(100)
-        
-        # Save CNN result to results with event2 prefix and update output.jpg (after trigger_gpio_output)
-        save_event2_result()
-        
-        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] CNN inference completed")
-        return animal_detected
+        # Set lights HIGH before capturing frame (CNN script will capture frame)
+        set_lights_high()
+        try:
+            result = subprocess.run(
+                [sys.executable, str(CNN_SCRIPT)],
+                cwd=str(SCRIPT_DIR),
+                check=True,
+                capture_output=True,
+                text=True
+            )
+            
+            # Wait a moment for file to be written, then read the latest results file
+            time.sleep(0.1)
+            results_file = get_latest_results_file()
+            
+            detections = []
+            if results_file and results_file.exists():
+                try:
+                    with open(results_file, 'r') as f:
+                        detection_lines = f.readlines()
+                    detections = parse_detection_labels(detection_lines)
+                except Exception as e:
+                    print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Warning: Could not read results file: {e}")
+            
+            # Check for human detection
+            human_detected = any(det["label"] == "person" and det["confidence"] >= 0.55 for det in detections)
+            if human_detected:
+                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Human Detected")
+            
+            # Check for animal detections
+            animal_labels = ["teddy bear", "toy", "animal", "squirrel", "groundhog", "raccoon", "cat", "dog"]
+            animal_detected = any(det["label"] in animal_labels and det["confidence"] >= 0.30 for det in detections)
+            
+            # Only trigger deterrence if animal is detected AND no human is detected
+            if animal_detected and not human_detected:
+                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Animal Detected (no human) - Triggering deterrence")
+                # Trigger deterrence GPIO output pin HIGH for 100ms
+                trigger_deterrence_gpio(100)
+            elif animal_detected and human_detected:
+                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Animal Detected but Human also present - Deterrence NOT triggered")
+            
+            # Save CNN result to results with event2 prefix and update output.jpg (after trigger_deterrence_gpio)
+            save_event2_result()
+            
+            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] CNN inference completed")
+            return animal_detected
+        finally:
+            # Always turn lights off after CNN processing
+            set_lights_low()
     except subprocess.CalledProcessError as e:
         print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Error running CNN script: {e}")
         if e.stdout:
             print(f"Output: {e.stdout}")
         if e.stderr:
             print(f"Error: {e.stderr}")
+        set_lights_low()  # Ensure lights are turned off on error
         return False
     except Exception as e:
         print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Unexpected error: {e}")
+        set_lights_low()  # Ensure lights are turned off on error
         return False
 
 
@@ -280,13 +318,18 @@ def setup_gpio():
     wiringpi.pinMode(GPIO_INPUT_PIN, wiringpi.INPUT)
     wiringpi.pullUpDnControl(GPIO_INPUT_PIN, wiringpi.PUD_DOWN)
 
-    # Configure output pin
-    wiringpi.pinMode(GPIO_OUTPUT_PIN, wiringpi.OUTPUT)
-    wiringpi.digitalWrite(GPIO_OUTPUT_PIN, wiringpi.LOW)
+    # Configure deterrence output pin
+    wiringpi.pinMode(GPIO_OUTPUT_PIN_DETERRENCE, wiringpi.OUTPUT)
+    wiringpi.digitalWrite(GPIO_OUTPUT_PIN_DETERRENCE, wiringpi.LOW)
+
+    # Configure lights output pin
+    wiringpi.pinMode(GPIO_OUTPUT_PIN_LIGHTS, wiringpi.OUTPUT)
+    wiringpi.digitalWrite(GPIO_OUTPUT_PIN_LIGHTS, wiringpi.LOW)
 
     print(f"✓ wiringPi initialized.")
     print(f"  Input pin: {GPIO_INPUT_PIN} (pull-down enabled, idle=LOW)")
-    print(f"  Output pin: {GPIO_OUTPUT_PIN} (initialized to LOW)")
+    print(f"  Deterrence output pin: {GPIO_OUTPUT_PIN_DETERRENCE} (initialized to LOW)")
+    print(f"  Lights output pin: {GPIO_OUTPUT_PIN_LIGHTS} (initialized to LOW)")
     return True
 
 
@@ -363,7 +406,8 @@ def main():
     print("GPIO Monitor for CNN Inference")
     print("=" * 60)
     print(f"Input Pin: {GPIO_INPUT_PIN} (wiringPi numbering)")
-    print(f"Output Pin: {GPIO_OUTPUT_PIN} (wiringPi numbering)")
+    print(f"Deterrence Output Pin: {GPIO_OUTPUT_PIN_DETERRENCE} (wiringPi numbering)")
+    print(f"Lights Output Pin: {GPIO_OUTPUT_PIN_LIGHTS} (wiringPi numbering)")
     print(f"CNN Script: {CNN_SCRIPT}")
     print(f"Debounce Time: {DEBOUNCE_TIME} seconds")
     print(f"Pulse Timeout: {PULSE_TIMEOUT_MS}ms")
@@ -407,9 +451,10 @@ def main():
             
             time.sleep(0.001)  # 1ms polling interval for precise edge detection
     finally:
-        # Ensure output pin is set to LOW on exit
+        # Ensure output pins are set to LOW on exit
         try:
-            wiringpi.digitalWrite(GPIO_OUTPUT_PIN, wiringpi.LOW)
+            wiringpi.digitalWrite(GPIO_OUTPUT_PIN_DETERRENCE, wiringpi.LOW)
+            wiringpi.digitalWrite(GPIO_OUTPUT_PIN_LIGHTS, wiringpi.LOW)
         except:
             pass
         print("GPIO monitor exiting")
