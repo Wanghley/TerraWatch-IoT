@@ -20,6 +20,9 @@ authors:
 title: "TerraWatch-IoT"
 abstract: "A comprehensive, energy-efficient Internet-of-Things (IoT) pest detection and deterrence system designed to protect crop rows through intelligent, multi-level sensing (PIR, Thermal, mmWave, Audio) and automatic deterrence mechanisms."
 version: 1.0.0
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.17833426
 date-released: 2024-03-28
 license: MIT
 repository-code: "https://github.com/wanghley/TerraWatch-IoT"
