@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: "Martins"
+    given-names: "Wanghley"
+  - family-names: "Robinson"
+    given-names: "EJ"
+  - family-names: "Williams"
+    given-names: "Liam"
+  - family-names: "Gurthrie"
+    given-names: "Josh"
+  - family-names: "Coward"
+    given-names: "Jaden"
+  - family-names: "Blue"
+    given-names: "Ryan"
+  - family-names: "Da Paz"
+    given-names: "Vidal"
+  - family-names: "Noguera"
+    given-names: "Rodrigo"
+title: "TerraWatch-IoT"
+abstract: "A comprehensive, energy-efficient Internet-of-Things (IoT) pest detection and deterrence system designed to protect crop rows through intelligent, multi-level sensing (PIR, Thermal, mmWave, Audio) and automatic deterrence mechanisms."
+version: 1.0.0
+date-released: 2024-03-28
+license: MIT
+repository-code: "https://github.com/wanghley/TerraWatch-IoT"
+keywords:
+  - "iot"
+  - "smart-agriculture"
+  - "pest-control"
+  - "tinyml"
+  - "esp32"
+  - "computer-vision"
+  - "embedded-systems"
