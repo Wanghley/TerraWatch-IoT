@@ -20,8 +20,8 @@
 // ==========================================
 // === WIFI / NETWORK SETTINGS ===
 // ==========================================
-const char *ssid = "ECE449deco";
-const char *password = "ece449$$";
+const char *ssid = "liam";
+const char *password = ""; // Set to "" or NULL for open networks
 
 WiFiServer server(80);
 WiFiUDP udp;
@@ -60,7 +60,11 @@ void setup() {
   DEBUG_PRINT("[DEBUG] Connecting to WiFi: ");
   DEBUG_PRINTLN(ssid);
   
-  WiFi.begin(ssid, password);
+  if (password && strlen(password) > 0) {
+    WiFi.begin(ssid, password);
+  } else {
+    WiFi.begin(ssid);
+  }
   
   unsigned long wifiStartTime = millis();
   while (WiFi.status() != WL_CONNECTED) {
@@ -106,7 +110,11 @@ void loop() {
   if (WiFi.status() != WL_CONNECTED) {
     DEBUG_PRINTLN("[DEBUG] WiFi Lost! Reconnecting...");
     is_connected = false;
-    WiFi.begin(ssid, password);
+    if (password && strlen(password) > 0) {
+      WiFi.begin(ssid, password);
+    } else {
+      WiFi.begin(ssid);
+    }
     delay(1000);
     return;
   }
