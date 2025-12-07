@@ -1,8 +1,8 @@
 #include <WiFi.h>
 #include <WiFiUdp.h>
 
-const char* ssid = "ECE449deco";
-const char* password = "ece449$$";
+const char* ssid = "liam";
+const char* password = "";
 
 WiFiUDP udp;
 
@@ -41,7 +41,13 @@ void setup() {
   // Connect to WiFi
   // -----------------------------
   WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
+  if(password && strlen(password) > 0){
+    Serial.printf("Connecting to SSID: %s with password.\n", ssid);
+    WiFi.begin(ssid, password);
+  } else {
+    Serial.printf("Connecting to SSID: %s without password.\n", ssid);
+    WiFi.begin(ssid);
+  }
 
   Serial.print("Connecting to WiFi...");
   while (WiFi.status() != WL_CONNECTED) {
